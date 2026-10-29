@@ -72,7 +72,16 @@ jobs:
           fi
           [ -z "$ANTHROPIC_API_KEY" ] && echo "::warning::Δεν υπάρχει ANTHROPIC_API_KEY — ο Βοηθός AI θα μείνει ανενεργός."
           [ -z "$OWNER_EMAIL" ] && echo "::warning::Δεν υπάρχει OWNER_EMAIL — δεν θα δημιουργηθεί λογαριασμός ιδιοκτήτριας."
-          echo "SUPABASE_URL=https://$REF.supabase.co" >> "$GITHUB_ENV"
+          # Καθάρισμα κενών/αλλαγών γραμμής που μπαίνουν κατά λάθος στην επικόλληση
+          TOK=$(printf '%s' "$SUPABASE_ACCESS_TOKEN" | tr -d '[:space:]')
+          PW=$(printf '%s' "$SUPABASE_DB_PASSWORD" | tr -d '\r\n')
+          REF=$(printf '%s' "$REF" | tr -d '[:space:]')
+          echo "::add-mask::$TOK"; echo "::add-mask::$PW"
+          echo "Token: ξεκινά με ${TOK:0:4}…, μήκος ${#TOK} χαρακτήρες (αναμένεται sbp_ και 44)"
+          if ! [[ "$TOK" =~ ^sbp_[a-f0-9]{40}$ ]]; then
+            echo "::error::Το SUPABASE_ACCESS_TOKEN δεν είναι κλασικό token (ξεκινά με ${TOK:0:4}, μήκος ${#TOK}). Χρειάζεται 'legacy token' που αρχίζει με sbp_ και έχει 44 χαρακτήρες."
+          fi
+          { echo "SUPABASE_ACCESS_TOKEN=$TOK"; echo "SUPABASE_DB_PASSWORD=$PW"; echo "REF=$REF"; echo "SUPABASE_URL=https://$REF.supabase.co"; } >> "$GITHUB_ENV"
 
       - uses: supabase/setup-cli@v1
         with:
