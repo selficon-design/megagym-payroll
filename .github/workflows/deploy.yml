@@ -79,14 +79,14 @@ jobs:
           version: latest
 
       - name: Σύνδεση με το project
-        run: supabase link --project-ref "$REF" --password "$SUPABASE_DB_PASSWORD"
+        run: ./scripts/ci-run.sh supabase link --project-ref "$REF" --password "$SUPABASE_DB_PASSWORD"
 
       - name: Ενημέρωση βάσης (migrations)
-        run: supabase db push --password "$SUPABASE_DB_PASSWORD" --include-all
+        run: ./scripts/ci-run.sh supabase db push --password "$SUPABASE_DB_PASSWORD" --include-all
 
       - name: Κλειδιά project
         run: |
-          KEYS=$(supabase projects api-keys --project-ref "$REF" -o json)
+          KEYS=$(supabase projects api-keys --project-ref "$REF" -o json 2>/tmp/k.err) || { sed "s/^/::error::/" /tmp/k.err; exit 1; }
           ANON=$(echo "$KEYS" | jq -r '[.[] | select(.name=="anon")][0].api_key // empty')
           SERVICE=$(echo "$KEYS" | jq -r '[.[] | select(.name=="service_role")][0].api_key // empty')
           if [ -z "$ANON" ] || [ -z "$SERVICE" ]; then echo "::error::Δεν βρέθηκαν τα κλειδιά anon/service_role του project."; exit 1; fi
@@ -98,10 +98,10 @@ jobs:
         run: |
           args="ANON_KEY=$ANON_KEY SERVICE_ROLE_KEY=$SERVICE_KEY AI_MODEL=${AI_MODEL:-claude-haiku-5-5}"
           [ -n "$ANTHROPIC_API_KEY" ] && args="$args ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
-          supabase secrets set --project-ref "$REF" $args
+          ./scripts/ci-run.sh supabase secrets set --project-ref "$REF" $args
 
       - name: Deploy λειτουργιών (διαχείριση χρηστών, Βοηθός AI)
-        run: supabase functions deploy --project-ref "$REF"
+        run: ./scripts/ci-run.sh supabase functions deploy --project-ref "$REF"
 
       - name: Ρύθμιση σύνδεσης χρηστών (μόνο με πρόσκληση)
         run: |
