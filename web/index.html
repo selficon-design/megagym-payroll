@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MEGA GYM · Δηλώσεις μισθοδοσίας</title>
+<meta name="description" content="Εσωτερική εφαρμογή MEGA GYM για τις μηνιαίες δηλώσεις μισθοδοσίας εργαζομένων.">
+<meta name="theme-color" content="#0b0d10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="MEGA Μισθοδοσία">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon-64.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="boot" class="boot"><img src="mega-gym-logo.png" alt="MEGA GYM"><div class="spinner"></div></div>
+
+<!-- Σύνδεση -->
+<section id="login" class="login" hidden>
+  <form id="login-form" class="login-card" autocomplete="on">
+    <img class="login-logo" src="mega-gym-logo.png" alt="MEGA GYM Fitness Clubs">
+    <h1>Δηλώσεις μισθοδοσίας</h1>
+    <p class="muted">Σύνδεση για ιδιοκτήτρια, HR και managers καταστημάτων.</p>
+    <label for="login-email">Email</label>
+    <input id="login-email" type="email" autocomplete="username" required>
+    <label for="login-password">Κωδικός</label>
+    <input id="login-password" type="password" autocomplete="current-password" required minlength="6">
+    <button class="btn primary block" type="submit">Είσοδος</button>
+    <p id="login-msg" class="form-msg" role="status"></p>
+    <p class="muted small">Ξεχάσατε τον κωδικό; Η ιδιοκτήτρια μπορεί να ορίσει νέο από τη «Διαχείριση χρηστών».</p>
+  </form>
+</section>
+
+<!-- Εφαρμογή -->
+<div id="app" class="app" hidden>
+  <aside id="sidebar" class="sidebar">
+    <div class="side-head">
+      <img class="side-logo" src="mega-gym-logo.png" alt="MEGA GYM Fitness Clubs">
+      <button class="icon-btn only-mobile" id="close-menu" aria-label="Κλείσιμο μενού">✕</button>
+    </div>
+    <nav id="nav" class="nav"></nav>
+    <div class="side-foot">
+      <div id="me-box" class="me-box"></div>
+    </div>
+  </aside>
+  <div id="scrim" class="scrim"></div>
+  <div class="main-wrap">
+    <header class="topbar">
+      <button class="icon-btn only-mobile" id="open-menu" aria-label="Μενού">☰</button>
+      <div class="top-title"><strong id="page-title">Επισκόπηση</strong><span id="page-sub" class="muted"></span></div>
+      <div class="top-actions">
+        <label class="month-pick" title="Μήνας μισθοδοσίας">
+          <span class="muted small">Μήνας</span>
+          <input type="month" id="global-month">
+        </label>
+      </div>
+    </header>
+    <div id="demo-bar" class="demo-bar" hidden></div>
+    <main id="view" class="view" tabindex="-1"></main>
+  </div>
+</div>
+
+<!-- Οθόνη tablet καταστήματος -->
+<section id="kiosk" class="kiosk" hidden></section>
+
+<!-- Παράθυρα -->
+<dialog id="dlg" class="dlg"><div id="dlg-body"></div></dialog>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="config.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

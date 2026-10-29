@@ -1,0 +1,8 @@
+# Ρυθμίσεις Supabase CLI (χρησιμοποιούνται από το αυτόματο deploy)
+project_id = "mega-gym-payroll"
+
+[functions.admin-users]
+verify_jwt = false   # ο έλεγχος γίνεται μέσα στη συνάρτηση (μόνο ιδιοκτήτρια)
+
+[functions.ask]
+verify_jwt = false   # ο έλεγχος γίνεται μέσα στη συνάρτηση (μόνο χρήστες της εφαρμογής)

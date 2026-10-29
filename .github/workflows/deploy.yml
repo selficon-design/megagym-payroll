@@ -1,0 +1,168 @@
+# Αυτόματο deploy: με κάθε αλλαγή στο main (ή χειροκίνητα από την καρτέλα Actions)
+#  1. τρέχει τους ελέγχους δικαιωμάτων της βάσης
+#  2. ενημερώνει τη βάση Supabase (πίνακες, ρόλοι, ασφάλεια) και τις λειτουργίες server
+#  3. ρυθμίζει τη σύνδεση χρηστών και δημιουργεί τον λογαριασμό της ιδιοκτήτριας (την πρώτη φορά)
+#  4. δημοσιεύει την εφαρμογή (GitHub Pages ή, αν υπάρχει κλειδί, Cloudflare Pages)
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Έλεγχος δικαιωμάτων βάσης
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./tests/run.sh
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: postgres
+          PGPASSWORD: postgres
+
+  deploy:
+    name: Βάση + εφαρμογή
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.site.outputs.url }}
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      AI_MODEL: ${{ vars.AI_MODEL }}
+      OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+      OWNER_PASSWORD: ${{ secrets.OWNER_PASSWORD }}
+      OWNER_NAME: ${{ vars.OWNER_NAME }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Έλεγχος ρυθμίσεων
+        run: |
+          missing=""
+          [ -z "$SUPABASE_ACCESS_TOKEN" ] && missing="$missing SUPABASE_ACCESS_TOKEN"
+          [ -z "$SUPABASE_DB_PASSWORD" ] && missing="$missing SUPABASE_DB_PASSWORD"
+          [ -z "$REF" ] && missing="$missing SUPABASE_PROJECT_REF"
+          if [ -n "$missing" ]; then
+            echo "::error::Λείπουν τα Secrets:$missing (Settings → Secrets and variables → Actions)"; exit 1
+          fi
+          [ -z "$ANTHROPIC_API_KEY" ] && echo "::warning::Δεν υπάρχει ANTHROPIC_API_KEY — ο Βοηθός AI θα μείνει ανενεργός."
+          [ -z "$OWNER_EMAIL" ] && echo "::warning::Δεν υπάρχει OWNER_EMAIL — δεν θα δημιουργηθεί λογαριασμός ιδιοκτήτριας."
+          echo "SUPABASE_URL=https://$REF.supabase.co" >> "$GITHUB_ENV"
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Σύνδεση με το project
+        run: supabase link --project-ref "$REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Ενημέρωση βάσης (migrations)
+        run: supabase db push --password "$SUPABASE_DB_PASSWORD" --include-all
+
+      - name: Κλειδιά project
+        run: |
+          KEYS=$(supabase projects api-keys --project-ref "$REF" -o json)
+          ANON=$(echo "$KEYS" | jq -r '[.[] | select(.name=="anon")][0].api_key // empty')
+          SERVICE=$(echo "$KEYS" | jq -r '[.[] | select(.name=="service_role")][0].api_key // empty')
+          if [ -z "$ANON" ] || [ -z "$SERVICE" ]; then echo "::error::Δεν βρέθηκαν τα κλειδιά anon/service_role του project."; exit 1; fi
+          echo "::add-mask::$SERVICE"
+          echo "ANON_KEY=$ANON" >> "$GITHUB_ENV"
+          echo "SERVICE_KEY=$SERVICE" >> "$GITHUB_ENV"
+
+      - name: Μυστικά λειτουργιών server
+        run: |
+          args="ANON_KEY=$ANON_KEY SERVICE_ROLE_KEY=$SERVICE_KEY AI_MODEL=${AI_MODEL:-claude-haiku-5-5}"
+          [ -n "$ANTHROPIC_API_KEY" ] && args="$args ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
+          supabase secrets set --project-ref "$REF" $args
+
+      - name: Deploy λειτουργιών (διαχείριση χρηστών, Βοηθός AI)
+        run: supabase functions deploy --project-ref "$REF"
+
+      - name: Ρύθμιση σύνδεσης χρηστών (μόνο με πρόσκληση)
+        run: |
+          curl -sS -f -X PATCH "https://api.supabase.com/v1/projects/$REF/config/auth" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" \
+            -d '{"disable_signup": true, "password_min_length": 8}' > /dev/null
+          echo "Οι δημόσιες εγγραφές είναι απενεργοποιημένες· λογαριασμούς φτιάχνει μόνο η ιδιοκτήτρια."
+
+      - name: Λογαριασμός ιδιοκτήτριας
+        if: env.OWNER_EMAIL != ''
+        run: |
+          EMAIL=$(echo "$OWNER_EMAIL" | tr 'A-Z' 'a-z' | xargs)
+          NAME="${OWNER_NAME:-Ιδιοκτήτρια}"
+          if [ -n "$OWNER_PASSWORD" ]; then
+            code=$(curl -sS -o /tmp/u.json -w "%{http_code}" -X POST "$SUPABASE_URL/auth/v1/admin/users" \
+              -H "apikey: $SERVICE_KEY" -H "Authorization: Bearer $SERVICE_KEY" -H "Content-Type: application/json" \
+              -d "$(jq -n --arg e "$EMAIL" --arg p "$OWNER_PASSWORD" '{email:$e,password:$p,email_confirm:true}')")
+            case "$code" in
+              200|201) echo "Δημιουργήθηκε ο λογαριασμός σύνδεσης της ιδιοκτήτριας.";;
+              422) echo "Ο λογαριασμός σύνδεσης υπάρχει ήδη (ο κωδικός δεν αλλάζει).";;
+              *) echo "::error::Αποτυχία δημιουργίας λογαριασμού ($code)"; cat /tmp/u.json; exit 1;;
+            esac
+          fi
+          # Ρόλος ιδιοκτήτριας (δημιουργείται μόνο αν δεν υπάρχει· δεν αλλάζει υπάρχοντα)
+          curl -sS -f -X POST "$SUPABASE_URL/rest/v1/app_users?on_conflict=email" \
+            -H "apikey: $SERVICE_KEY" -H "Authorization: Bearer $SERVICE_KEY" -H "Content-Type: application/json" \
+            -H "Prefer: resolution=ignore-duplicates,return=minimal" \
+            -d "$(jq -n --arg e "$EMAIL" --arg n "$NAME" '{email:$e,name:$n,role:"owner",active:true}')"
+          echo "Ο ρόλος ιδιοκτήτριας είναι έτοιμος για $EMAIL."
+
+      - name: Ετοιμασία εφαρμογής
+        run: |
+          mkdir -p /tmp/sb && cd /tmp/sb && npm init -y > /dev/null && npm i @supabase/supabase-js@2 --silent
+          cp /tmp/sb/node_modules/@supabase/supabase-js/dist/umd/supabase.js "$GITHUB_WORKSPACE/web/vendor/supabase.js"
+          cd "$GITHUB_WORKSPACE/web"
+          printf 'window.MEGA_CONFIG = { supabaseUrl: "%s", supabaseAnonKey: "%s" };\n' "$SUPABASE_URL" "$ANON_KEY" > config.js
+          sed -i "s/__BUILD__/${GITHUB_SHA::8}/" sw.js
+          SHELL_FILES='"vendor/supabase.js", '
+          sed -i "s|\"js/api-supabase.js\",|\"js/api-supabase.js\", ${SHELL_FILES}|" sw.js
+
+      - name: Δημοσίευση στο Cloudflare Pages
+        id: cf
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        run: |
+          npx --yes wrangler@3 pages project create mega-gym-payroll --production-branch main 2>/dev/null || true
+          npx --yes wrangler@3 pages deploy web --project-name mega-gym-payroll --branch main --commit-dirty=true
+          echo "url=https://mega-gym-payroll.pages.dev" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/configure-pages@v5
+        if: steps.cf.outcome == 'skipped'
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.cf.outcome == 'skipped'
+        with:
+          path: web
+      - id: pages
+        if: steps.cf.outcome == 'skipped'
+        uses: actions/deploy-pages@v4
+
+      - name: Διεύθυνση εφαρμογής
+        id: site
+        run: |
+          URL="${{ steps.cf.outputs.url || steps.pages.outputs.page_url }}"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "### ✅ Η εφαρμογή είναι online: $URL" >> "$GITHUB_STEP_SUMMARY"
