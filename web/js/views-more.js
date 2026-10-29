@@ -100,7 +100,7 @@ async function startKiosk(store) {
         catch (e) { $("#k-pmsg").textContent = e.message; }
       };
       $("#k-pok").onclick = go;
-      $("#k-pw").onkeydown = (e) => e.key === "Enter" && go();
+      $("#k-pw").onkeydown = (e) => { if (e.key === "Enter") go(); };
     };
   }
   function stop() {
