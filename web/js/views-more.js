@@ -11,11 +11,16 @@ const view = () => $("#view");
 export async function tablet() {
   if (!can.sign()) return (view().innerHTML = `<div class="card empty">Η λειτουργία tablet είναι για λογαριασμούς καταστημάτων.</div>`);
   const stores = visibleStores();
+  const st = await getStatus().catch(() => []);
+  const cnt = (s) => st.filter((r) => r.store === s && r.status === "pending").length;
+  const best = stores.slice().sort((a, b) => cnt(b) - cnt(a))[0];
+  const total = role() === "manager" ? cnt(S.me.store) : st.filter((r) => r.status === "pending").length;
   view().innerHTML = `
   <div class="page-head"><div><div class="eyebrow">${h(monthLabel(S.month))}</div><h1>Tablet καταστήματος</h1>
     <p class="muted">Πλήρης οθόνη μόνο για υπογραφές. Ο εργαζόμενος βρίσκει το όνομά του, διαβάζει τη δήλωση και υπογράφει. Δεν βλέπει τίποτε άλλο.</p></div></div>
   <div class="card" style="max-width:640px">
-    ${role() === "manager" ? `<p>Κατάστημα: <strong>${h(S.me.store)}</strong></p>` : `<label>Κατάστημα</label><select id="tb-store">${stores.map((s) => `<option>${h(s)}</option>`).join("")}</select>`}
+    ${role() === "manager" ? `<p>Κατάστημα: <strong>${h(S.me.store)}</strong> · ${cnt(S.me.store)} δηλώσεις προς υπογραφή</p>` : `<label>Κατάστημα</label><select id="tb-store">${stores.map((s) => `<option value="${h(s)}" ${s === best ? "selected" : ""}>${h(s)} (${cnt(s)} προς υπογραφή)</option>`).join("")}</select>`}
+    ${total ? "" : `<div class="note warn" style="margin-top:16px">Δεν υπάρχουν δηλώσεις προς υπογραφή για ${h(monthLabel(S.month))}. Στο tablet εμφανίζονται μόνο οι εργαζόμενοι με έτοιμη δήλωση. ${can.prepare() ? `<a href="#/prepare">Ετοιμάστε τις δηλώσεις εδώ →</a>` : ""}</div>`}
     <div class="note" style="margin-top:16px">Για έξοδο από τη λειτουργία tablet θα ζητηθεί ο κωδικός του λογαριασμού σας.</div>
     <button class="btn primary block" id="tb-go">▣ Έναρξη λειτουργίας tablet</button>
   </div>`;
@@ -36,14 +41,21 @@ async function startKiosk(store) {
   async function list() {
     clearTimeout(state.idle);
     invalidate();
-    let rows = [];
-    try { rows = (await getStatus()).filter((r) => r.store === store && r.status === "pending"); }
+    let all = [];
+    try { all = (await getStatus()).filter((r) => r.store === store); }
     catch (e) { k.innerHTML = head + `<div class="k-body"><h1>Δεν υπάρχει σύνδεση</h1><p class="muted">${h(e.message)}</p><button class="btn primary" id="k-retry" style="margin-top:20px">Δοκιμή ξανά</button></div>`; bindExit(); $("#k-retry").onclick = list; return; }
+    const rows = all.filter((r) => r.status === "pending");
     const draw = () => {
-      const shown = rows.filter((r) => !state.q || norm(`${r.first} ${r.last} ${r.code}`).includes(norm(state.q)));
-      $("#k-grid").innerHTML = shown.length ? shown.map((r) => `<button class="k-card" data-code="${h(r.code)}">${h(r.first)} ${h(r.last)}<span>${h(r.code)}</span></button>`).join("")
-        : `<p class="muted" style="font-size:18px">${rows.length ? "Δεν βρέθηκε. Δοκιμάστε με το επώνυμο ή τον κωδικό σας." : "Δεν υπάρχουν δηλώσεις προς υπογραφή αυτή τη στιγμή."}</p>`;
-      $$(".k-card").forEach((b) => (b.onclick = () => sign(rows.find((r) => r.code === b.dataset.code))));
+      const match = (r) => !state.q || norm(`${r.first} ${r.last} ${r.code}`).includes(norm(state.q));
+      const shown = rows.filter(match);
+      // Όταν ψάχνει κάποιος που δεν έχει έτοιμη δήλωση, του εξηγούμε γιατί
+      const others = state.q.trim().length >= 2 ? all.filter((r) => r.status !== "pending" && match(r)) : [];
+      const note = (r) => r.status === "signed" ? "✓ Έχετε ήδη υπογράψει για αυτόν τον μήνα" : "Η δήλωσή σας δεν έχει ετοιμαστεί ακόμη· ενημερώστε τον υπεύθυνο";
+      $("#k-grid").innerHTML =
+        shown.map((r) => `<button class="k-card" data-code="${h(r.code)}">${h(r.first)} ${h(r.last)}<span>${h(r.code)}</span></button>`).join("") +
+        others.map((r) => `<div class="k-card" style="opacity:.6;cursor:default">${h(r.first)} ${h(r.last)}<span>${note(r)}</span></div>`).join("") ||
+        `<p class="muted" style="font-size:18px">${rows.length ? "Δεν βρέθηκε. Δοκιμάστε με το επώνυμο ή τον κωδικό σας." : `Δεν υπάρχουν δηλώσεις προς υπογραφή για ${h(store)} αυτή τη στιγμή.<br><span style="font-size:15px">Ο υπεύθυνος πρέπει πρώτα να τις ετοιμάσει από την «Προετοιμασία».</span>`}</p>`;
+      $$("button.k-card").forEach((b) => (b.onclick = () => sign(rows.find((r) => r.code === b.dataset.code))));
     };
     k.innerHTML = head + `<div class="k-body"><h1>Καλώς ήρθατε</h1><p class="muted" style="font-size:18px">Βρείτε το όνομά σας για να υπογράψετε τη μηνιαία δήλωση.</p>
       <input class="k-search" id="k-q" type="search" placeholder="Γράψτε το επώνυμό σας…" autocomplete="off" value="${h(state.q)}"><div class="k-grid" id="k-grid"></div></div>`;
