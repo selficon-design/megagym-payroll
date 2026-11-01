@@ -10,7 +10,7 @@ const FEMALE = ["Μαρία", "Ελένη", "Κατερίνα", "Σοφία", "�
 const LAST_M = ["Παπαδόπουλος", "Οικονόμου", "Αντωνίου", "Δημητρίου", "Βασιλείου", "Ζαχαρίου", "Μαυρίδης", "Λαμπράκης", "Σταματίου", "Πετρίδης", "Χατζής", "Καραγιάννης"];
 const LAST_F = ["Παπαδοπούλου", "Οικονόμου", "Αντωνίου", "Δημητρίου", "Βασιλείου", "Ζαχαρίου", "Μαυρίδου", "Λαμπράκη", "Σταματίου", "Πετρίδου", "Χατζή", "Καραγιάννη"];
 const USERS = [
-  { email: "owner@demo.gr", name: "Ιδιοκτήτρια (επίδειξη)", role: "owner", store: null, active: true },
+  { email: "owner@demo.gr", name: "Γενική Διευθύντρια (επίδειξη)", role: "owner", store: null, active: true },
   { email: "hr@demo.gr", name: "Τμήμα HR (επίδειξη)", role: "hr", store: null, active: true },
   { email: "glyfada@demo.gr", name: "Manager Γλυφάδας (επίδειξη)", role: "manager", store: "Γλυφάδα", active: true },
   { email: "kifisia@demo.gr", name: "Manager Κηφισιάς (επίδειξη)", role: "manager", store: "Κηφισιά", active: true },
@@ -192,7 +192,7 @@ export function createDemoApi() {
       return { ok: true };
     },
     async voidDeclaration(id, reason) {
-      if (role() !== "owner") throw new Error("Μόνο η ιδιοκτήτρια μπορεί να ακυρώσει δήλωση.");
+      if (role() !== "owner") throw new Error("Μόνο η Γενική Διευθύντρια μπορεί να ακυρώσει δήλωση.");
       const d = S.declarations.find((x) => x.id === id);
       Object.assign(d, { status: "voided", voided_by: S.as, voided_at: new Date().toISOString(), void_reason: reason });
       log("void", "declarations", d.id, { label: d.employee_name, month: d.month, store: d.store }); save();
@@ -217,7 +217,7 @@ export function createDemoApi() {
     async setActive(email, active) {
       if (role() !== "owner") deny();
       const u = S.users.find((x) => x.email === email);
-      if (!active && u.role === "owner" && S.users.filter((x) => x.role === "owner" && x.active).length < 2) throw new Error("Πρέπει να υπάρχει τουλάχιστον μία ενεργή ιδιοκτήτρια.");
+      if (!active && u.role === "owner" && S.users.filter((x) => x.role === "owner" && x.active).length < 2) throw new Error("Πρέπει να υπάρχει τουλάχιστον μία ενεργή Γενική Διευθύντρια.");
       u.active = active; log("update", "app_users", email, { changes: { active: { to: active } } }); save();
     },
     async deleteUser(email) {

@@ -5,6 +5,8 @@ const SHELL = [
   "./", "index.html", "styles.css", "config.js", "manifest.webmanifest", "mega-gym-logo.png",
   "js/app.js", "js/core.js", "js/util.js", "js/views-main.js", "js/views-more.js", "js/signature.js", "js/pdf.js",
   "js/api-supabase.js", "js/api-demo.js", "icons/icon-192.png", "icons/favicon-64.png",
+  "js/hr-common.js", "js/fill-launch.js", "js/fill.js", "js/views-hr.js", "js/views-card.js", "js/views-stats.js",
+  "js/views-assess.js", "js/views-admin.js", "js/stats-calc.js",
 ];
 
 self.addEventListener("install", (e) => {

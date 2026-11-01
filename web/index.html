@@ -23,14 +23,14 @@
   <form id="login-form" class="login-card" autocomplete="on">
     <img class="login-logo" src="mega-gym-logo.png" alt="MEGA GYM Fitness Clubs">
     <h1>Δηλώσεις μισθοδοσίας</h1>
-    <p class="muted">Σύνδεση για ιδιοκτήτρια, HR και managers καταστημάτων.</p>
+    <p class="muted">Σύνδεση για Γενική Διευθύντρια, HR, managers και εκπαιδευτές.</p>
     <label for="login-email">Email</label>
     <input id="login-email" type="email" autocomplete="username" required>
     <label for="login-password">Κωδικός</label>
     <input id="login-password" type="password" autocomplete="current-password" required minlength="6">
     <button class="btn primary block" type="submit">Είσοδος</button>
     <p id="login-msg" class="form-msg" role="status"></p>
-    <p class="muted small">Ξεχάσατε τον κωδικό; Η ιδιοκτήτρια μπορεί να ορίσει νέο από τη «Διαχείριση χρηστών».</p>
+    <p class="muted small">Ξεχάσατε τον κωδικό; Η Γενική Διευθύντρια μπορεί να ορίσει νέο από τη «Διαχείριση χρηστών».</p>
   </form>
 </section>
 
@@ -65,6 +65,9 @@
 
 <!-- Οθόνη tablet καταστήματος -->
 <section id="kiosk" class="kiosk" hidden></section>
+
+<!-- Απομονωμένη φόρμα εργαζομένου (χωρίς λογαριασμό) -->
+<section id="fill" class="kiosk fill" hidden></section>
 
 <!-- Παράθυρα -->
 <dialog id="dlg" class="dlg"><div id="dlg-body"></div></dialog>

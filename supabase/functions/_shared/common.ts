@@ -32,7 +32,7 @@ export function userClient(req: Request): SupabaseClient {
   });
 }
 
-export type Me = { email: string; name: string; role: "owner" | "hr" | "manager"; store: string | null };
+export type Me = { email: string; name: string; role: "owner" | "hr" | "manager" | "trainer"; store: string | null };
 
 /** Επαληθεύει το token και επιστρέφει τον χρήστη της εφαρμογής (ή null). */
 export async function currentUser(req: Request): Promise<Me | null> {

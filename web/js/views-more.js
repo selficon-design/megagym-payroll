@@ -3,6 +3,7 @@ import { S, can, role, getStatus, invalidate, visibleStores, activeStores } from
 import { $, $$, h, badge, money, monthLabel, dateTime, relTime, statementText, toast, openDialog, closeDialog, confirmBox, norm, ROLE_GR, downloadXlsx, STATUS, dmy } from "./util.js";
 import { signaturePad } from "./signature.js";
 import { backupZip } from "./pdf.js";
+import { specialtiesBlock, bindSpecialties, trainerScopeDialog } from "./views-admin.js";
 import { rerender } from "./views-main.js";
 
 const view = () => $("#view");
@@ -141,12 +142,13 @@ function md(text) {
 }
 
 export async function assistant() {
+  const live = S.api.mode !== "demo";
   const sugg = role() === "manager"
-    ? ["Ποιοι δεν έχουν υπογράψει αυτόν τον μήνα;", "Πόσα ποσά υπογράφηκαν αυτόν τον μήνα;", "Δείξε το ιστορικό δηλώσεων ενός εργαζομένου", "Σύγκρινε με τον προηγούμενο μήνα"]
-    : ["Ποιοι δεν έχουν υπογράψει αυτόν τον μήνα;", "Σύνοψη μήνα ανά κατάστημα", "Σύνολα ποσών ανά εταιρεία φέτος", "Ποιο κατάστημα καθυστερεί περισσότερο;", ...(can.audit() ? ["Τι άλλαξε τις τελευταίες μέρες;"] : [])];
+    ? ["Ποιοι δεν έχουν υπογράψει αυτόν τον μήνα;", ...(live ? ["Ποιες αποφάσεις δεν έχω γνωστοποιήσει στους εργαζόμενους;", "Ποιος έχει άδεια την επόμενη εβδομάδα;", "Ποιοι δεν έχουν στατιστικά για χθες;", "Ποιοι δεν έχουν κάνει ακόμη την αξιολόγηση;"] : ["Πόσα ποσά υπογράφηκαν αυτόν τον μήνα;", "Σύγκρινε με τον προηγούμενο μήνα"])]
+    : ["Ποιοι δεν έχουν υπογράψει αυτόν τον μήνα;", ...(live ? ["Τι αιτήματα περιμένουν απόφασή μου;", "Μετατροπή Ρεσεψιόν ανά κατάστημα αυτόν τον μήνα", "Ποιος έχει άδεια την επόμενη εβδομάδα;", "Αποτελέσματα της τελευταίας αξιολόγησης"] : ["Σύνοψη μήνα ανά κατάστημα", "Σύνολα ποσών ανά εταιρεία φέτος"]), ...(can.audit() ? ["Τι άλλαξε τις τελευταίες μέρες;"] : [])];
   view().innerHTML = `
   <div class="page-head"><div><div class="eyebrow">Ρωτήστε σε απλά ελληνικά</div><h1>Βοηθός AI</h1>
-    <p class="muted">Ψάχνει στα δεδομένα με τα δικαιώματα του λογαριασμού σας${role() === "manager" ? ` (κατάστημα ${h(S.me.store)})` : ""}. Δεν αλλάζει τίποτα.</p></div>
+    <p class="muted">Μισθοδοσία, αιτήματα & άδειες, ημερήσια στατιστικά και αξιολογήσεις. Ψάχνει στα δεδομένα με τα δικαιώματα του λογαριασμού σας${role() === "manager" ? ` (κατάστημα ${h(S.me.store)})` : ""}. Δεν αλλάζει τίποτα.</p></div>
     <button class="btn" id="ai-clear">Νέα συζήτηση</button></div>
   <div class="card chat"><div class="chat-log" id="ai-log"></div>
     <div class="suggest" id="ai-sugg">${sugg.map((s) => `<button class="chip">${h(s)}</button>`).join("")}</div>
@@ -233,20 +235,21 @@ export async function audit() {
 
 // ═══════════════════════ Χρήστες ═══════════════════════
 export async function users() {
-  if (!can.users()) return (view().innerHTML = `<div class="card empty">Μόνο για την ιδιοκτήτρια.</div>`);
+  if (!can.users()) return (view().innerHTML = `<div class="card empty">Μόνο για τη Γενική Διευθύντρια.</div>`);
   const [list, st] = await Promise.all([S.api.users(), S.api.userStatuses()]);
   view().innerHTML = `
   <div class="page-head"><div><div class="eyebrow">Πρόσβαση</div><h1>Διαχείριση χρηστών</h1>
     <p class="muted">Ποιος μπαίνει στην εφαρμογή και τι βλέπει. Οι εργαζόμενοι δεν χρειάζονται λογαριασμό: υπογράφουν στο tablet του καταστήματος.</p></div>
     <button class="btn primary" id="us-new">+ Νέος χρήστης</button></div>
-  <div class="grid g3" style="margin-bottom:16px">
-    <div class="card"><span class="badge b-role">Ιδιοκτήτρια</span><p class="small muted" style="margin-top:8px">Τα πάντα: εργαζόμενοι, δηλώσεις όλων των καταστημάτων, υπογραφές, ακυρώσεις, backup, χρήστες, ρυθμίσεις.</p></div>
-    <div class="card"><span class="badge b-role">HR</span><p class="small muted" style="margin-top:8px">Βλέπει όλα τα καταστήματα, διαχειρίζεται εργαζόμενους, ετοιμάζει δηλώσεις (και μαζικά). Δεν παίρνει υπογραφές.</p></div>
-    <div class="card"><span class="badge b-role">Manager</span><p class="small muted" style="margin-top:8px">Μόνο το κατάστημά του: εκκρεμότητες, ετοιμασία δηλώσεων και υπογραφές στο tablet.</p></div>
+  <div class="grid g4" style="margin-bottom:16px">
+    <div class="card"><span class="badge b-role">Γενική Διευθύντρια</span><p class="small muted" style="margin-top:8px">Τα πάντα: όλα τα καταστήματα, δηλώσεις, υπογραφές, ακυρώσεις, backup, χρήστες, πρότυπα κειμένων, ερωτηματολόγια· τελική απόφαση σε αυξήσεις, συμβάσεις και προειδοποιήσεις.</p></div>
+    <div class="card"><span class="badge b-role">HR</span><p class="small muted" style="margin-top:8px">Όλα τα καταστήματα: εργαζόμενοι, δηλώσεις, αιτήματα και αναφορές, αποφάσεις αδειών, προσχέδια προειδοποιήσεων, αναφορές στατιστικών και αξιολογήσεων. Δεν παίρνει υπογραφές.</p></div>
+    <div class="card"><span class="badge b-role">Manager</span><p class="small muted" style="margin-top:8px">Μόνο το κατάστημά του: δηλώσεις και υπογραφές, αιτήματα εργαζομένων, αναφορές, ημερήσια στατιστικά, έναρξη αξιολογήσεων.</p></div>
+    <div class="card"><span class="badge b-role">Εκπαιδευτής</span><p class="small muted" style="margin-top:8px">Μόνο έναρξη αξιολογήσεων για εργαζόμενους του πεδίου που του ορίζετε. Καμία πρόσβαση σε μισθοδοσία, άδειες, αναφορές ή χρήστες.</p></div>
   </div>
   <div class="card"><div class="table-wrap"><table class="stack"><thead><tr><th>Χρήστης</th><th>Ρόλος</th><th>Λογαριασμός</th><th></th></tr></thead><tbody>
   ${list.map((u) => { const s = st?.[u.email]; return `<tr><td><strong>${h(u.name)}</strong><span class="sub">${h(u.email)}</span></td>
-    <td><span class="badge b-role">${ROLE_GR[u.role]}${u.store ? " · " + h(u.store) : ""}</span></td>
+    <td><span class="badge b-role">${ROLE_GR[u.role]}${u.store ? " · " + h(u.store) : ""}</span>${u.role === "trainer" ? ` <button class="btn sm ghost" data-scope="${h(u.email)}">Πεδίο ευθύνης</button>` : ""}</td>
     <td class="small">${!u.active ? `<span class="badge b-voided">Κλειδωμένος</span>` : st === null ? `<span class="muted">—</span>` : s ? `<span class="badge b-signed">Ενεργός</span><span class="sub">${s.lastSignIn ? "Τελ. είσοδος " + relTime(s.lastSignIn) : "Δεν έχει μπει ακόμη"}</span>` : `<span class="badge b-pending">Χωρίς κωδικό</span>`}</td>
     <td class="acts"><div class="row-actions" style="justify-content:flex-end">
       <button class="btn sm" data-edit="${h(u.email)}">Επεξεργασία</button>
@@ -257,6 +260,7 @@ export async function users() {
   $("#us-new").onclick = () => userDialog(null);
   $$("[data-edit]").forEach((b) => (b.onclick = () => userDialog(list.find((u) => u.email === b.dataset.edit))));
   $$("[data-pw]").forEach((b) => (b.onclick = () => passwordDialog(b.dataset.pw)));
+  $$("[data-scope]").forEach((b) => (b.onclick = () => trainerScopeDialog(list.find((u) => u.email === b.dataset.scope))));
   $$("[data-act]").forEach((b) => (b.onclick = async () => {
     const u = list.find((x) => x.email === b.dataset.act);
     if (u.active && !(await confirmBox("Κλείδωμα χρήστη", `Ο/Η ${u.name} δεν θα μπορεί να μπει στην εφαρμογή μέχρι να ξεκλειδωθεί.`, { ok: "Κλείδωμα", danger: true }))) return;
@@ -283,7 +287,7 @@ function userDialog(u) {
     <form id="uf"><div class="grid g2">
       <div><label>Ονοματεπώνυμο</label><input id="uf-name" required maxlength="150" value="${h(u.name)}"></div>
       <div><label>Email</label><input id="uf-email" type="email" required maxlength="254" value="${h(u.email)}" ${isNew ? "" : "readonly"}></div>
-      <div><label>Ρόλος</label><select id="uf-role">${["manager", "hr", "owner"].map((r) => `<option value="${r}" ${r === u.role ? "selected" : ""}>${ROLE_GR[r]}</option>`).join("")}</select></div>
+      <div><label>Ρόλος</label><select id="uf-role">${["manager", "hr", "owner", ...(S.api.mode === "demo" ? [] : ["trainer"])].map((r) => `<option value="${r}" ${r === u.role ? "selected" : ""}>${ROLE_GR[r]}</option>`).join("")}</select></div>
       <div id="uf-store-box"><label>Κατάστημα</label><select id="uf-store">${activeStores().map((s) => `<option ${s === u.store ? "selected" : ""}>${h(s)}</option>`).join("")}</select></div>
       ${isNew ? `<div style="grid-column:1/-1"><label>Κωδικός πρώτης εισόδου</label><div class="row-actions" style="flex-wrap:nowrap"><input id="uf-pw" minlength="8" required value="${genPassword()}"><button type="button" class="btn" id="uf-gen">Νέος</button></div>
         <p class="muted small" style="margin-top:6px">Δώστε τον στον χρήστη. Μπορεί να τον αλλάξει από «Ο λογαριασμός μου».</p></div>` : ""}
@@ -306,6 +310,7 @@ function userDialog(u) {
               shareCredentials(v, pw);
             } else { closeDialog(); toast("Αποθηκεύτηκε."); }
             users();
+            if (v.role === "trainer" && isNew) toast("Ορίστε το πεδίο ευθύνης του εκπαιδευτή από «Πεδίο ευθύνης».");
           } catch (err) { $("#uf-msg").textContent = err.message; }
         };
       },
@@ -341,7 +346,7 @@ function shareCredentials(u, pw) {
 
 // ═══════════════════════ Ρυθμίσεις ═══════════════════════
 export async function settings() {
-  if (!can.settings()) return (view().innerHTML = `<div class="card empty">Μόνο για την ιδιοκτήτρια.</div>`);
+  if (!can.settings()) return (view().innerHTML = `<div class="card empty">Μόνο για τη Γενική Διευθύντρια.</div>`);
   const block = (title, kind, items) => `<div class="card"><div class="card-head"><h3>${title}</h3></div>
     ${items.map((x) => `<div class="list-item"><div class="grow"><strong>${h(x.name)}</strong></div><span class="badge ${x.active ? "b-signed" : "b-missing"}">${x.active ? "Ενεργό" : "Ανενεργό"}</span>
       <button class="btn sm" data-tog="${kind}" data-name="${h(x.name)}">${x.active ? "Απενεργοποίηση" : "Ενεργοποίηση"}</button></div>`).join("")}
@@ -349,8 +354,11 @@ export async function settings() {
   view().innerHTML = `
   <div class="page-head"><div><div class="eyebrow">Διαχείριση</div><h1>Ρυθμίσεις</h1><p class="muted">Καταστήματα και εταιρείες που εμφανίζονται στις επιλογές.</p></div></div>
   <div class="grid g2">${block("Καταστήματα", "store", S.lists.stores)}${block("Εταιρείες", "company", S.lists.companies)}</div>
-  <div class="card" style="margin-top:16px"><h3>Πληροφορίες</h3><dl class="kv"><dt>Λειτουργία</dt><dd>${S.api.mode === "demo" ? "Επίδειξη (τοπικά δεδομένα)" : "Σύνδεση με βάση Supabase"}</dd><dt>Έκδοση</dt><dd>2.0</dd></dl></div>`;
+  ${specialtiesBlock()}
+  ${S.api.mode === "demo" ? "" : `<div class="card" style="margin-top:16px"><div class="card-head"><h3>Πρότυπα κειμένων</h3><a class="btn sm primary" href="#/templates">Άνοιγμα →</a></div><p class="muted small">Κείμενα αιτήσεων, εγκρίσεων, απορρίψεων, διευκρινίσεων, είδη άδειας και λόγοι απόρριψης, με ιστορικό εκδόσεων.</p></div>`}
+  <div class="card" style="margin-top:16px"><h3>Πληροφορίες</h3><dl class="kv"><dt>Λειτουργία</dt><dd>${S.api.mode === "demo" ? "Επίδειξη (τοπικά δεδομένα)" : "Σύνδεση με βάση Supabase"}</dd><dt>Έκδοση</dt><dd>2.1 · Καρτέλα εργαζομένου</dd></dl></div>`;
   const reload = async () => { S.lists = await S.api.lists(); settings(); };
+  bindSpecialties(reload);
   $$("[data-tog]").forEach((b) => (b.onclick = async () => {
     const arr = b.dataset.tog === "store" ? S.lists.stores : S.lists.companies;
     const x = arr.find((i) => i.name === b.dataset.name);
@@ -367,7 +375,7 @@ export async function settings() {
 
 // ═══════════════════════ Backup ═══════════════════════
 export async function backup() {
-  if (!can.backup()) return (view().innerHTML = `<div class="card empty">Μόνο για την ιδιοκτήτρια.</div>`);
+  if (!can.backup()) return (view().innerHTML = `<div class="card empty">Μόνο για τη Γενική Διευθύντρια.</div>`);
   const F = (S.filters.backup ??= { store: "" });
   const list = (await S.api.declarations({ month: S.month, status: "signed" })).filter((d) => !F.store || d.store === F.store);
   view().innerHTML = `

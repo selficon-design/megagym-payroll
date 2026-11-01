@@ -263,3 +263,64 @@ td input{min-height:36px;padding:6px 9px}
   table.stack td.acts{padding-top:8px}
 }
 @media print{.sidebar,.topbar,.demo-bar{display:none}.main-wrap{margin:0}}
+
+/* ═══════ Επέκταση: καρτέλα εργαζομένου, αιτήματα, στατιστικά, αξιολογήσεις ═══════ */
+.b-info{background:var(--info-soft);color:var(--info)}
+.b-done{background:#e9ecef;color:#3a424c}
+.kpi.sel{outline:3px solid var(--accent);outline-offset:-1px}
+.grid.g2-1{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin:4px 0 16px}
+.tabs a{padding:9px 14px;border-radius:9px 9px 0 0;text-decoration:none;font-weight:650;font-size:14px;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-1px}
+.tabs a.on{color:var(--ink);border-bottom-color:var(--accent)}
+.tabs a:hover{color:var(--ink)}
+tr.click{cursor:pointer} tr.click:hover td{background:#fafbfc}
+.stack-actions{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.stack-actions .btn{justify-content:flex-start}
+.decision{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px}
+.decision.old{opacity:.65;background:#fafbfc}
+.decision .statement{margin-top:8px;font-size:14px}
+h4{font-size:14px}
+table.entry td{padding:6px 6px}
+table.entry input.cnt{width:64px;min-height:36px;padding:6px 8px;text-align:right;font-variant-numeric:tabular-nums}
+table.entry input.cnt.bad{border-color:var(--bad);background:var(--bad-soft)}
+table.entry tr.partial td{background:var(--warn-soft)}
+th.calc,td.calc{background:#f7f8fa;color:var(--ink-2)}
+table.daily td,table.daily th{padding:6px 7px;font-size:12.5px}
+.cell-missing{color:#c3c9d0}
+tr.total td{border-top:2px solid var(--line);background:#fafbfc}
+.warn-dot{color:var(--warn);cursor:help;font-size:16px}
+svg.chart{width:100%;height:auto;max-height:320px;margin-top:8px}
+svg.chart .grid-l{stroke:var(--line);stroke-width:1}
+svg.chart .ax{fill:var(--muted);font-size:11px}
+svg.chart .line{fill:none;stroke:var(--ink);stroke-width:2.2}
+svg.chart .pt{fill:var(--accent);stroke:var(--ink);stroke-width:1.2}
+.plist{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-top:8px}
+label.check{display:flex;gap:8px;align-items:center;font-weight:500;margin:6px 0;font-size:14px;color:var(--ink)}
+label.check input{width:auto;min-height:0}
+table.edit td{padding:4px}
+table.edit input{min-height:32px;padding:4px 6px;font-size:13px;min-width:70px}
+table.edit input.wide{min-width:260px}
+table.edit tr.bad td{background:var(--bad-soft)}
+.err-txt{color:var(--bad);font-weight:600}
+/* Φόρμα εργαζομένου */
+.fill .k-sign{max-width:820px}
+.fill .k-sign label{font-size:15px}
+.deadline{background:var(--accent-soft);color:#5c4500;border-radius:10px;padding:10px 14px;margin-top:14px;font-size:14.5px}
+.deadline.sticky{position:sticky;top:78px;z-index:1}
+.fsec{margin:26px 0 4px;font-size:18px;border-bottom:2px solid var(--accent);padding-bottom:6px}
+.fq{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:12px}
+.fq.missing{border-color:var(--bad);background:var(--bad-soft)}
+.fq-t{font-weight:650;font-size:16px;margin-bottom:8px}
+.fq .req{color:var(--bad)}
+.opt{display:flex;gap:10px;align-items:flex-start;font-weight:500;font-size:15.5px;margin:8px 0;color:var(--ink);cursor:pointer}
+.opt input{width:22px;height:22px;min-height:0;margin-top:1px;flex:none}
+.scale{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sc{margin:0;cursor:pointer}
+.sc input{position:absolute;opacity:0;width:0;height:0}
+.sc span{display:inline-grid;place-items:center;width:46px;height:46px;border:1px solid #d5dae0;border-radius:10px;font-weight:700;font-size:17px;color:var(--ink)}
+.sc input:checked + span{background:var(--accent);border-color:var(--accent)}
+.sc input:focus-visible + span{outline:3px solid rgba(255,196,0,.45)}
+@media (max-width:900px){.grid.g2-1{grid-template-columns:1fr}.deadline.sticky{top:70px}}
+table.entry th:first-child,table.entry td:first-child,table.daily th:first-child,table.daily td:first-child{position:sticky;left:0;z-index:1;background:#fff;box-shadow:1px 0 0 var(--line)}
+table.entry thead th:first-child,table.daily thead th:first-child{background:#fafbfc}
+table.entry td:first-child{min-width:170px}

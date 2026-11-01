@@ -91,7 +91,7 @@ export const STATUS = {
   voided: { label: "Ακυρωμένη", cls: "b-voided" },
 };
 export const badge = (s) => `<span class="badge ${STATUS[s]?.cls || ""}">${STATUS[s]?.label || h(s)}</span>`;
-export const ROLE_GR = { owner: "Ιδιοκτήτρια", hr: "HR", manager: "Manager" };
+export const ROLE_GR = { owner: "Γενική Διευθύντρια", hr: "HR", manager: "Manager", trainer: "Εκπαιδευτής" };
 
 // ── Μηνύματα ──
 let toastTimer;
