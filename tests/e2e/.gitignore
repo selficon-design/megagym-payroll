@@ -1,0 +1,5 @@
+shots/
+*.xlsx
+ids.json
+*.log
+postgrest*

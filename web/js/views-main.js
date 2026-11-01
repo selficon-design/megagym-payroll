@@ -1,5 +1,5 @@
 // Οθόνες: Επισκόπηση, Εκκρεμότητες, Προετοιμασία, Δηλώσεις, Εργαζόμενοι
-import { S, can, role, getStatus, getEmployees, invalidate, visibleStores, activeStores, activeCompanies } from "./core.js";
+import { S, can, role, getStatus, getEmployees, invalidate, visibleStores, activeStores, activeCompanies, activeSpecialties } from "./core.js";
 import {
   $, $$, h, badge, money, monthLabel, shiftMonth, monthBounds, defaultPeriod, dmy, dateTime, relTime, parseAmount,
   statementText, amountText, toast, openDialog, closeDialog, confirmBox, downloadXlsx, readXlsx, norm, initials, STATUS,
@@ -433,11 +433,13 @@ export async function declarations() {
 
 // ═══════════════════════ Εργαζόμενοι ═══════════════════════
 const EMP_HEAD = ["Κωδικός εργαζομένου", "Όνομα", "Επώνυμο", "Κατάστημα", "Εταιρεία", "Κατάσταση"];
+// Προαιρετικές στήλες (επέκταση). Το παλιό πρότυπο 6 στηλών εξακολουθεί να γίνεται δεκτό.
+const EMP_EXTRA = ["Ειδικότητα", "Ημερομηνία πρόσληψης"];
 
 export async function employees() {
-  const F = (S.filters.emp ??= { q: "", store: "", status: "Ενεργός" });
+  const F = (S.filters.emp ??= { q: "", store: "", status: "Ενεργός", spec: "" });
   const all = await getEmployees();
-  const list = all.filter((e) => (!F.store || e.store === F.store) && (!F.status || e.status === F.status) && (!F.q || norm(`${e.first} ${e.last} ${e.code}`).includes(norm(F.q))));
+  const list = all.filter((e) => (!F.store || e.store === F.store) && (!F.status || e.status === F.status) && (!F.spec || (F.spec === "-" ? !e.specialty : e.specialty === F.spec)) && (!F.q || norm(`${e.first} ${e.last} ${e.code}`).includes(norm(F.q))));
   const ed = can.editEmployees();
 
   view().innerHTML = `
@@ -451,29 +453,31 @@ export async function employees() {
     <div class="toolbar">
       <input type="search" id="em-q" placeholder="Αναζήτηση ονόματος ή κωδικού" value="${h(F.q)}">
       ${storeSelect("em-store", F.store)}
+      <select id="em-spec"><option value="">Όλες οι ειδικότητες</option>${activeSpecialties().map((x) => `<option ${x === F.spec ? "selected" : ""}>${h(x)}</option>`).join("")}<option value="-" ${F.spec === "-" ? "selected" : ""}>Χωρίς ειδικότητα</option></select>
       <div class="chips">${[["Ενεργός", "Ενεργοί"], ["Ανενεργός", "Ανενεργοί"], ["", "Όλοι"]].map(([k, l]) => `<button class="chip ${F.status === k ? "on" : ""}" data-st="${k}">${l}<span class="n">${all.filter((e) => (!F.store || e.store === F.store) && (!k || e.status === k)).length}</span></button>`).join("")}</div>
     </div>
-    ${list.length ? `<div class="table-wrap"><table class="stack"><thead><tr><th>Εργαζόμενος</th><th>Κατάστημα</th><th>Εταιρεία</th><th>Κατάσταση</th><th></th></tr></thead><tbody>
-      ${list.map((e) => `<tr><td><strong>${h(e.last)} ${h(e.first)}</strong><span class="sub">${h(e.code)}</span></td><td data-l="Κατάστημα">${h(e.store)}</td><td data-l="Εταιρεία">${h(e.company)}</td>
+    ${list.length ? `<div class="table-wrap"><table class="stack"><thead><tr><th>Εργαζόμενος</th><th>Ειδικότητα</th><th>Κατάστημα</th><th>Εταιρεία</th><th>Κατάσταση</th><th></th></tr></thead><tbody>
+      ${list.map((e) => `<tr><td><a href="#/employee?code=${encodeURIComponent(e.code)}" style="text-decoration:none"><strong>${h(e.last)} ${h(e.first)}</strong></a><span class="sub">${h(e.code)}</span></td><td data-l="Ειδικότητα">${h(e.specialty || "—")}</td><td data-l="Κατάστημα">${h(e.store)}</td><td data-l="Εταιρεία">${h(e.company)}</td>
         <td><span class="badge ${e.status === "Ενεργός" ? "b-signed" : "b-missing"}">${h(e.status)}</span></td>
-        <td class="acts"><div class="row-actions" style="justify-content:flex-end"><button class="btn sm ghost" data-hist="${h(e.code)}">Ιστορικό</button>${ed ? `<button class="btn sm" data-edit="${h(e.code)}">Επεξεργασία</button>` : ""}</div></td></tr>`).join("")}
+        <td class="acts"><div class="row-actions" style="justify-content:flex-end">${S.api.mode === "demo" ? `<button class="btn sm ghost" data-hist="${h(e.code)}">Ιστορικό</button>` : `<a class="btn sm ghost" href="#/employee?code=${encodeURIComponent(e.code)}">Καρτέλα</a>`}${ed ? `<button class="btn sm" data-edit="${h(e.code)}">Επεξεργασία</button>` : ""}</div></td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty"><div class="big">♙</div>${all.length ? "Δεν βρέθηκαν εργαζόμενοι με αυτά τα φίλτρα." : "Δεν υπάρχουν ακόμη εργαζόμενοι." + (ed ? " Προσθέστε έναν ή κάντε εισαγωγή από Excel." : "")}</div>`}
   </div>`;
 
   $("#em-q").oninput = (e) => { F.q = e.target.value; employees().then(() => { const i = $("#em-q"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }); };
   $("#em-store") && ($("#em-store").onchange = (e) => { F.store = e.target.value; employees(); });
+  $("#em-spec").onchange = (e) => { F.spec = e.target.value; employees(); };
   $$("[data-st]").forEach((b) => (b.onclick = () => { F.status = b.dataset.st; employees(); }));
   $$("[data-edit]").forEach((b) => (b.onclick = () => employeeDialog(all.find((e) => e.code === b.dataset.edit))));
   $$("[data-hist]").forEach((b) => (b.onclick = () => employeeHistory(all.find((e) => e.code === b.dataset.hist))));
   $("#em-new") && ($("#em-new").onclick = () => employeeDialog(null));
-  $("#em-export").onclick = () => downloadXlsx("Εργαζόμενοι.xlsx", { "Εργαζόμενοι": [EMP_HEAD, ...list.map((e) => [e.code, e.first, e.last, e.store, e.company, e.status])] });
-  $("#em-tpl") && ($("#em-tpl").onclick = () => downloadXlsx("Πρότυπο_Εργαζομένων.xlsx", { "Εργαζόμενοι": [EMP_HEAD, ["MG1001", "Όνομα", "Επώνυμο", activeStores()[0], activeCompanies()[0], "Ενεργός"]], "Επιλογές": [["Καταστήματα", "Εταιρείες", "Κατάσταση"], ...Array.from({ length: Math.max(activeStores().length, activeCompanies().length) }, (_, i) => [activeStores()[i] || "", activeCompanies()[i] || "", ["Ενεργός", "Ανενεργός"][i] || ""])] }));
+  $("#em-export").onclick = () => downloadXlsx("Εργαζόμενοι.xlsx", { "Εργαζόμενοι": [[...EMP_HEAD, ...EMP_EXTRA], ...list.map((e) => [e.code, e.first, e.last, e.store, e.company, e.status, e.specialty || "", e.hire_date ? dmy(e.hire_date) : ""])] });
+  $("#em-tpl") && ($("#em-tpl").onclick = () => downloadXlsx("Πρότυπο_Εργαζομένων.xlsx", { "Εργαζόμενοι": [[...EMP_HEAD, ...EMP_EXTRA], ["MG1001", "Όνομα", "Επώνυμο", activeStores()[0], activeCompanies()[0], "Ενεργός", activeSpecialties()[0] || "", "01/09/2024"]], "Επιλογές": [["Καταστήματα", "Εταιρείες", "Κατάσταση", "Ειδικότητες"], ...Array.from({ length: Math.max(activeStores().length, activeCompanies().length, activeSpecialties().length) }, (_, i) => [activeStores()[i] || "", activeCompanies()[i] || "", ["Ενεργός", "Ανενεργός"][i] || "", activeSpecialties()[i] || ""])] }));
   $("#em-file") && ($("#em-file").onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) importEmployees(f, all); });
 }
 
 function employeeDialog(e) {
   const isNew = !e;
-  e ??= { code: "", first: "", last: "", store: S.filters.emp?.store || activeStores()[0], company: activeCompanies()[0], status: "Ενεργός" };
+  e ??= { code: "", first: "", last: "", store: S.filters.emp?.store || activeStores()[0], company: activeCompanies()[0], status: "Ενεργός", specialty: null, hire_date: null };
   const stores = [...new Set([...activeStores(), e.store])], comps = [...new Set([...activeCompanies(), e.company])];
   openDialog(`
     <div class="dlg-head"><h2>${isNew ? "Νέος εργαζόμενος" : "Επεξεργασία εργαζομένου"}</h2><button class="icon-btn" data-close>✕</button></div>
@@ -484,7 +488,10 @@ function employeeDialog(e) {
       <div><label>Επώνυμο</label><input id="ef-last" required maxlength="150" value="${h(e.last)}"></div>
       <div><label>Κατάστημα</label><select id="ef-store">${stores.map((s) => `<option ${s === e.store ? "selected" : ""}>${h(s)}</option>`).join("")}</select></div>
       <div><label>Εταιρεία</label><select id="ef-company">${comps.map((s) => `<option ${s === e.company ? "selected" : ""}>${h(s)}</option>`).join("")}</select></div>
+      ${S.api.mode === "demo" ? "" : `<div><label>Ειδικότητα</label><select id="ef-spec"><option value="">—</option>${[...new Set([...activeSpecialties(), e.specialty].filter(Boolean))].map((s) => `<option ${s === e.specialty ? "selected" : ""}>${h(s)}</option>`).join("")}</select></div>
+      <div><label>Ημερομηνία πρόσληψης</label><input type="date" id="ef-hire" value="${h(e.hire_date || "")}"></div>`}
     </div>
+    ${isNew ? "" : `<p class="muted small" style="margin-top:10px">Αλλαγή καταστήματος ή ειδικότητας: ο κωδικός και όλο το ιστορικό μένουν· οι παλιές εγγραφές κρατούν το κατάστημα της περιόδου τους.</p>`}
     ${isNew ? "" : `<p class="muted small" style="margin-top:10px">Ο κωδικός δεν αλλάζει, γιατί τον χρησιμοποιούν και οι άλλες εφαρμογές.</p>`}
     <p id="ef-msg" class="form-msg"></p>
     <div class="dlg-foot"><button type="button" class="btn" data-close>Άκυρο</button><button class="btn primary">Αποθήκευση</button></div></form>`,
@@ -494,6 +501,7 @@ function employeeDialog(e) {
         $("#ef").onsubmit = async (ev) => {
           ev.preventDefault();
           const v = { code: $("#ef-code").value.trim(), first: $("#ef-first").value.trim(), last: $("#ef-last").value.trim(), store: $("#ef-store").value, company: $("#ef-company").value, status: $("#ef-status").value };
+          if ($("#ef-spec")) { v.specialty = $("#ef-spec").value || null; v.hire_date = $("#ef-hire").value || null; }
           try { await S.api.saveEmployee(v, isNew); closeDialog(); invalidate(); toast("Αποθηκεύτηκε."); rerender(); }
           catch (err) { $("#ef-msg").textContent = err.message; }
         };
@@ -519,18 +527,22 @@ async function importEmployees(file, existing) {
     const table = sheet("Εργαζόμενοι") || sheet(wb.SheetNames[0]);
     if (!table) throw new Error("Δεν βρέθηκε το φύλλο «Εργαζόμενοι».");
     if (EMP_HEAD.some((x, i) => norm(table[0]?.[i]).trim() !== norm(x))) throw new Error("Οι στήλες δεν ταιριάζουν με το πρότυπο: " + EMP_HEAD.join(", "));
+    const hasExtra = S.api.mode !== "demo" && norm(table[0]?.[6]).trim() === norm(EMP_EXTRA[0]);
+    const specs = (S.lists.specialties || []).map((x) => x.name);
     const stores = S.lists.stores.map((s) => s.name), comps = S.lists.companies.map((c) => c.name);
     const seen = new Set(), ex = new Set(existing.map((e) => e.code));
     const rows = table.slice(1).filter((r) => r.some((x) => String(x).trim())).map((r, i) => {
-      const [code, first, last, store, company, status] = r.map((x) => String(x ?? "").trim());
-      let problem = "";
+      const [code, first, last, store, company, status, specialty, hire] = r.map((x) => String(x ?? "").trim());
+      let problem = "", hire_date = null;
+      if (hasExtra && hire) { const m = hire.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/) || hire.match(/^(\d{4})-(\d{2})-(\d{2})$/); if (!m) problem = "Ημερομηνία πρόσληψης: ΗΗ/ΜΜ/ΕΕΕΕ"; else hire_date = m[1].length === 4 ? `${m[1]}-${m[2]}-${m[3]}` : `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; }
+      if (hasExtra && specialty && !specs.includes(specialty)) problem = "Άγνωστη ειδικότητα";
       if (!code || !first || !last) problem = "Λείπουν στοιχεία";
       else if (seen.has(code)) problem = "Διπλός κωδικός";
       else if (!stores.includes(store)) problem = "Άγνωστο κατάστημα";
       else if (!comps.includes(company)) problem = "Άγνωστη εταιρεία";
       else if (!["Ενεργός", "Ανενεργός"].includes(status)) problem = "Κατάσταση: Ενεργός ή Ανενεργός";
       seen.add(code);
-      return { line: i + 2, code, first, last, store, company, status, problem, isNew: !ex.has(code) };
+      return { line: i + 2, code, first, last, store, company, status, problem, isNew: !ex.has(code), ...(hasExtra ? { specialty: specialty || null, hire_date } : {}) };
     });
     const ok = rows.filter((r) => !r.problem), bad = rows.filter((r) => r.problem);
     openDialog(`
@@ -543,7 +555,7 @@ async function importEmployees(file, existing) {
           $("#im-ok").onclick = async () => {
             $("#im-ok").disabled = true;
             try {
-              const n = await S.api.importEmployees(ok.map(({ code, first, last, store, company, status }) => ({ code, first, last, store, company, status })));
+              const n = await S.api.importEmployees(ok.map(({ code, first, last, store, company, status, specialty, hire_date }) => ({ code, first, last, store, company, status, ...(hasExtra ? { specialty, hire_date } : {}) })));
               closeDialog(); invalidate(); toast(`Αποθηκεύτηκαν ${n} εργαζόμενοι.`); rerender();
             } catch (err) { toast(err.message, true); $("#im-ok").disabled = false; }
           };

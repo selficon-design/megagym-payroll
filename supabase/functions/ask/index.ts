@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
   try {
     if (!API_KEY) return json({ error: "Ο Βοηθός AI δεν έχει ενεργοποιηθεί (λείπει το ANTHROPIC_API_KEY)." }, 503);
     const me = await currentUser(req);
-    if (!me) return json({ error: "Δεν επιτρέπεται η πρόσβαση." }, 403);
+    if (!me || me.role === "trainer") return json({ error: "Δεν επιτρέπεται η πρόσβαση." }, 403);
 
     const body = await req.json().catch(() => ({}));
     const history = Array.isArray(body.messages) ? body.messages.slice(-12) : [];
