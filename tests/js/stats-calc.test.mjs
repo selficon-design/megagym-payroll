@@ -53,3 +53,9 @@ test("από–έως με συμπερίληψη και των δύο ημερ�
   assert.deepEqual(daysBetween("2026-10-25", "2026-10-25"), ["2026-10-25"]);
   assert.equal(bucketOf("2026-10-29", 100), "2026-10-26");
 });
+test("ο Βοηθός AI χρησιμοποιεί ακριβώς τους ίδιους τύπους με την εφαρμογή", async () => {
+  const fs = await import("node:fs");
+  const web = fs.readFileSync(new URL("../../web/js/stats-calc.js", import.meta.url), "utf8");
+  const srv = fs.readFileSync(new URL("../../supabase/functions/_shared/stats-calc.js", import.meta.url), "utf8");
+  assert.equal(srv.split("\n").slice(1).join("\n"), web);
+});

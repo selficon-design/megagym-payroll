@@ -3,7 +3,10 @@
 // άρα ένας manager παίρνει απαντήσεις μόνο για το κατάστημά του.
 // Οι εικόνες υπογραφών δεν στέλνονται ποτέ στο μοντέλο.
 import { cors, currentUser, json, userClient } from "../_shared/common.ts";
+import type { Me } from "../_shared/common.ts";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
+// @ts-ignore: απλό JavaScript (ελέγχεται και τοπικά)
+import { hrTools, hrToolNames, runHrTool } from "../_shared/hr-tools.js";
 
 const API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 const MODEL = Deno.env.get("AI_MODEL") || "claude-haiku-5-5";
@@ -12,7 +15,7 @@ const STATUS_GR: Record<string, string> = {
   signed: "Υπογεγραμμένη", pending: "Προς υπογραφή", missing: "Χωρίς δήλωση", voided: "Ακυρωμένη",
 };
 
-const tools = [
+const payrollTools = [
   {
     name: "month_overview",
     description: "Σύνοψη ενός μήνα: ανά κατάστημα πόσοι ενεργοί εργαζόμενοι έχουν υπογράψει, πόσοι περιμένουν υπογραφή, πόσοι δεν έχουν δήλωση, και σύνολα ποσών.",
@@ -55,22 +58,25 @@ const tools = [
   },
   {
     name: "employees_list",
-    description: "Λίστα εργαζομένων (μητρώο) με φίλτρα κατάστημα, εταιρεία, κατάσταση (Ενεργός|Ανενεργός).",
+    description: "Λίστα εργαζομένων (μητρώο) με φίλτρα κατάστημα, εταιρεία, ειδικότητα, κατάσταση (Ενεργός|Ανενεργός).",
     input_schema: {
       type: "object",
-      properties: { store: { type: "string" }, company: { type: "string" }, status: { type: "string" } },
+      properties: { store: { type: "string" }, company: { type: "string" }, status: { type: "string" }, specialty: { type: "string" } },
     },
   },
   {
     name: "recent_activity",
     description: "Πρόσφατες ενέργειες χρηστών (ποιος υπέγραψε/πρόσθεσε/άλλαξε τι και πότε). Διαθέσιμο μόνο για ιδιοκτήτρια και HR.",
-    input_schema: { type: "object", properties: { limit: { type: "number" }, entity: { type: "string", enum: ["employees", "declarations", "app_users"] } } },
+    input_schema: { type: "object", properties: { limit: { type: "number" }, entity: { type: "string", enum: ["employees", "declarations", "app_users", "hr_requests", "text_template_versions", "reject_reasons", "questionnaires", "trainer_scopes", "specialties"] } } },
   },
 ];
 
+const tools = [...payrollTools, ...hrTools];
+
 const money = (n: number) => n.toLocaleString("el-GR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "€";
 
-async function runTool(db: SupabaseClient, name: string, input: Record<string, any>): Promise<unknown> {
+async function runTool(db: SupabaseClient, name: string, input: Record<string, any>, me: Me): Promise<unknown> {
+  if (hrToolNames.has(name)) return await runHrTool(db, name, input, me);
   const month = /^\d{4}-\d{2}$/.test(input.month ?? "") ? input.month : null;
   switch (name) {
     case "month_overview": {
@@ -107,7 +113,7 @@ async function runTool(db: SupabaseClient, name: string, input: Record<string, a
       const q = String(input.query ?? "").trim().replace(/[%,()]/g, " ");
       if (q.length < 2) return { error: "Πολύ σύντομη αναζήτηση" };
       const parts = q.split(/\s+/).filter(Boolean);
-      let req = db.from("employees").select("code,first,last,store,company,status").limit(20);
+      let req = db.from("employees").select("code,first,last,store,company,status,specialty,hire_date").limit(20);
       for (const p of parts) req = req.or(`first.ilike.%${p}%,last.ilike.%${p}%,code.ilike.%${p}%`);
       const { data: emps, error } = await req;
       if (error) return { error: error.message };
@@ -143,10 +149,11 @@ async function runTool(db: SupabaseClient, name: string, input: Record<string, a
         .map((s: any) => ({ ...s, total: money(s.total), signed_total: money(s.signed_total) }));
     }
     case "employees_list": {
-      let req = db.from("employees").select("code,first,last,store,company,status").order("last").limit(1000);
+      let req = db.from("employees").select("code,first,last,store,company,status,specialty,hire_date").order("last").limit(1000);
       if (input.store) req = req.eq("store", input.store);
       if (input.company) req = req.eq("company", input.company);
       if (input.status) req = req.eq("status", input.status);
+      if (input.specialty) req = req.eq("specialty", input.specialty);
       const { data, error } = await req;
       if (error) return { error: error.message };
       return { count: data?.length ?? 0, rows: data };
@@ -179,23 +186,29 @@ Deno.serve(async (req) => {
     if (!messages.length || messages[messages.length - 1].role !== "user") return json({ error: "Γράψτε μια ερώτηση." }, 400);
 
     const db = userClient(req);
-    const [{ data: stores }, { data: companies }] = await Promise.all([
+    const [{ data: stores }, { data: companies }, { data: specialties }] = await Promise.all([
       db.from("stores").select("name").order("sort"),
       db.from("companies").select("name").order("sort"),
+      db.from("specialties").select("name,stat_kind").order("sort"),
     ]);
     const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Athens" }));
     const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const roleGr = me.role === "owner" ? "Ιδιοκτήτρια (βλέπει τα πάντα)" : me.role === "hr" ? "HR (βλέπει όλα τα καταστήματα)" : `Manager καταστήματος ${me.store} (βλέπει μόνο αυτό)`;
+    const roleGr = me.role === "owner" ? "Γενική Διευθύντρια (βλέπει τα πάντα)" : me.role === "hr" ? "HR (βλέπει όλα τα καταστήματα)" : `Manager καταστήματος ${me.store} (βλέπει μόνο αυτό· βαθμούς αξιολογήσεων δεν βλέπει)`;
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(new Date());
 
-    const system = `Είσαι ο Βοηθός της εφαρμογής «Δηλώσεις μισθοδοσίας» της MEGA GYM.
+    const system = `Είσαι ο Βοηθός της εφαρμογής της MEGA GYM: δηλώσεις μισθοδοσίας και ενιαία καρτέλα εργαζομένου (αιτήματα & αναφορές, άδειες, ημερήσια στατιστικά, αξιολογήσεις).
 Απαντάς ΠΑΝΤΑ στα ελληνικά, σύντομα και καθαρά, με βάση ΜΟΝΟ όσα επιστρέφουν τα εργαλεία. Ποτέ μην επινοείς ονόματα, ποσά ή αριθμούς.
-Σήμερα: ${now.toLocaleDateString("el-GR")} · τρέχων μήνας: ${thisMonth}. Όταν ο χρήστης λέει «αυτόν τον μήνα», «τον Οκτώβριο» κ.λπ., μετάτρεψέ το σε YYYY-MM (χωρίς έτος = το πιο πρόσφατο έτος που δεν είναι στο μέλλον).
+Σήμερα: ${now.toLocaleDateString("el-GR")} (${today}) · τρέχων μήνας: ${thisMonth}. Για εργαλεία με ημερομηνίες δίνε YYYY-MM-DD· «την επόμενη εβδομάδα», «χθες» κ.λπ. τα μετατρέπεις εσύ (εβδομάδα = Δευτέρα–Κυριακή). Όταν ο χρήστης λέει «αυτόν τον μήνα», «τον Οκτώβριο» κ.λπ., μετάτρεψέ το σε YYYY-MM (χωρίς έτος = το πιο πρόσφατο έτος που δεν είναι στο μέλλον).
 Χρήστης: ${me.name} — ${roleGr}. Αν ζητήσει κάτι εκτός δικαιωμάτων του, εξήγησε ευγενικά ότι δεν έχει πρόσβαση.
 Καταστήματα: ${(stores ?? []).map((s: any) => s.name).join(", ")}.
 Εταιρείες: ${(companies ?? []).map((c: any) => c.name).join(", ")}.
+Ειδικότητες: ${(specialties ?? []).map((s: any) => s.name + (s.stat_kind ? ` (στατιστικά: ${s.stat_kind})` : "")).join(", ")}.
 Καταστάσεις δήλωσης: Υπογεγραμμένη, Προς υπογραφή (έχει ετοιμαστεί, περιμένει τον εργαζόμενο), Χωρίς δήλωση (δεν έχει ετοιμαστεί).
+Αιτήματα: αριθμοί τύπου ΑΙ-2026-00012. Η έγκριση ΔΕΝ είναι υλοποίηση. Η αναφορά manager (αρνητική αξιολόγηση, περιστατικό, αίτημα προειδοποίησης) ΔΕΝ είναι εγκεκριμένη προειδοποίηση· προειδοποίηση υπάρχει μόνο με έγκριση της Γενικής Διευθύντριας. Αυξήσεις/συμβάσεις τις εγκρίνει μόνο η ΓΔ. Υπόλοιπο άδειας δεν τηρείται — μην το υπολογίζεις.
+Στατιστικά: ποσοστά ΜΟΝΟ όπως τα επιστρέφει το εργαλείο (από αθροίσματα)· ποτέ μέσος όρος ποσοστών, ποτέ άθροισμα διαφορετικών ειδικοτήτων ως «συνολικές πωλήσεις», «—» σημαίνει μηδενικό παρονομαστή (όχι 0%). Ημέρα χωρίς καταχώριση ≠ μηδέν. Μην επινοείς στόχους, βαθμολογίες απόδοσης ή κατατάξεις «καλύτερου/χειρότερου» πέρα από τα νούμερα.
+Αξιολογήσεις: σύγκρινε βαθμούς μόνο στην ίδια έκδοση ερωτηματολογίου· μη συνδυάζεις τεστ γνώσεων, αυτοαξιολόγηση και στατιστικά σε έναν βαθμό.
 Μορφή απάντησης: ξεκίνα με την ουσία (π.χ. «Λείπουν 3 υπογραφές:»), μετά λίστα με παύλες αν χρειάζεται. Χρησιμοποίησε **έντονα** μόνο για σημαντικούς αριθμούς. Για μεγάλες λίστες δείξε έως 30 και ανέφερε πόσες ακόμη υπάρχουν.
-Δεν μπορείς να αλλάξεις δεδομένα· για ενέργειες (υπογραφή, προετοιμασία, προσθήκη εργαζομένου) πες στον χρήστη από ποια ενότητα της εφαρμογής γίνονται.`;
+Δεν μπορείς να αλλάξεις δεδομένα· για ενέργειες (υπογραφή, προετοιμασία, αποφάσεις αιτημάτων, καταχώριση στατιστικών, έναρξη αξιολόγησης) πες στον χρήστη από ποια ενότητα της εφαρμογής γίνονται. Μην επαναλαμβάνεις ολόκληρα κείμενα αποφάσεων ή αναφορών αν δεν ζητηθούν.`;
 
     for (let step = 0; step < 8; step++) {
       const r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -217,7 +230,7 @@ Deno.serve(async (req) => {
       for (const c of out.content) {
         if (c.type !== "tool_use") continue;
         let result: unknown;
-        try { result = await runTool(db, c.name, c.input ?? {}); } catch (e) { result = { error: String(e) }; }
+        try { result = await runTool(db, c.name, c.input ?? {}, me); } catch (e) { result = { error: String(e) }; }
         results.push({ type: "tool_result", tool_use_id: c.id, content: JSON.stringify(result).slice(0, 60000) });
       }
       messages.push({ role: "user", content: results });
