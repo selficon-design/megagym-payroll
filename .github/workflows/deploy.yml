@@ -117,10 +117,13 @@ jobs:
         run: |
           args="ANON_KEY=$ANON_KEY SERVICE_ROLE_KEY=$SERVICE_KEY AI_MODEL=${AI_MODEL:-claude-haiku-5-5}"
           [ -n "$ANTHROPIC_API_KEY" ] && args="$args ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
-          ./scripts/ci-run.sh supabase secrets set --project-ref "$REF" $args
+          CONFIRM=""; supabase secrets set --help 2>&1 | grep -q -- '--yes' && CONFIRM=--yes
+          ./scripts/ci-run.sh supabase secrets set --project-ref "$REF" $CONFIRM $args
 
       - name: Deploy λειτουργιών (διαχείριση χρηστών, Βοηθός AI)
-        run: ./scripts/ci-run.sh supabase functions deploy --project-ref "$REF"
+        run: |
+          CONFIRM=""; supabase functions deploy --help 2>&1 | grep -q -- '--yes' && CONFIRM=--yes
+          ./scripts/ci-run.sh supabase functions deploy --project-ref "$REF" $CONFIRM
 
       - name: Ρύθμιση σύνδεσης χρηστών (μόνο με πρόσκληση)
         run: |
