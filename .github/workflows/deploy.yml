@@ -93,7 +93,13 @@ jobs:
         run: ./scripts/ci-run.sh supabase link --project-ref "$REF" --password "$SUPABASE_DB_PASSWORD"
 
       - name: Ενημέρωση βάσης (migrations)
-        run: ./scripts/ci-run.sh supabase db push --password "$SUPABASE_DB_PASSWORD" --include-all
+        run: |
+          supabase --version
+          # Οι νέες εκδόσεις του CLI στοχεύουν από προεπιλογή την τοπική βάση: δηλώνουμε ρητά το συνδεδεμένο project
+          # (--remote στις νέες εκδόσεις, --linked στις παλιότερες).
+          if supabase db push --help 2>&1 | grep -q -- '--remote'; then TARGET=--remote; else TARGET=--linked; fi
+          echo "Στόχος: συνδεδεμένο project ($TARGET)"
+          ./scripts/ci-run.sh supabase db push $TARGET --password "$SUPABASE_DB_PASSWORD" --include-all
 
       - name: Κλειδιά project
         run: |
