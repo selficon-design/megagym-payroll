@@ -98,8 +98,10 @@ jobs:
           # Οι νέες εκδόσεις του CLI στοχεύουν από προεπιλογή την τοπική βάση: δηλώνουμε ρητά το συνδεδεμένο project
           # (--remote στις νέες εκδόσεις, --linked στις παλιότερες).
           if supabase db push --help 2>&1 | grep -q -- '--remote'; then TARGET=--remote; else TARGET=--linked; fi
-          echo "Στόχος: συνδεδεμένο project ($TARGET)"
-          ./scripts/ci-run.sh supabase db push $TARGET --password "$SUPABASE_DB_PASSWORD" --include-all
+          # Χωρίς τερματικό δεν μπορεί να ζητηθεί επιβεβαίωση: δίνεται ρητά (--yes), όπου υποστηρίζεται.
+          CONFIRM=""; supabase db push --help 2>&1 | grep -q -- '--yes' && CONFIRM=--yes
+          echo "Στόχος: συνδεδεμένο project ($TARGET) $CONFIRM"
+          ./scripts/ci-run.sh supabase db push $TARGET $CONFIRM --password "$SUPABASE_DB_PASSWORD" --include-all
 
       - name: Κλειδιά project
         run: |
