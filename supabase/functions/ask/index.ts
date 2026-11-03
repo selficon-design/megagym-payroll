@@ -2,7 +2,7 @@
 // Κάθε αναζήτηση τρέχει με τα δικαιώματα του χρήστη που ρωτά (RLS),
 // άρα ένας manager παίρνει απαντήσεις μόνο για το κατάστημά του.
 // Οι εικόνες υπογραφών δεν στέλνονται ποτέ στο μοντέλο.
-import { cors, currentUser, json, userClient } from "../_shared/common.ts";
+import { cors, identify, json, userClient } from "../_shared/common.ts";
 import type { Me } from "../_shared/common.ts";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 // @ts-ignore: απλό JavaScript (ελέγχεται και τοπικά)
@@ -66,7 +66,7 @@ const payrollTools = [
   },
   {
     name: "recent_activity",
-    description: "Πρόσφατες ενέργειες χρηστών (ποιος υπέγραψε/πρόσθεσε/άλλαξε τι και πότε). Διαθέσιμο μόνο για ιδιοκτήτρια και HR.",
+    description: "Πρόσφατες ενέργειες χρηστών (ποιος υπέγραψε/πρόσθεσε/άλλαξε τι και πότε). Διαθέσιμο μόνο για Γενική Διευθύντρια και HR.",
     input_schema: { type: "object", properties: { limit: { type: "number" }, entity: { type: "string", enum: ["employees", "declarations", "app_users", "hr_requests", "text_template_versions", "reject_reasons", "questionnaires", "trainer_scopes", "specialties"] } } },
   },
 ];
@@ -175,8 +175,10 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
     if (!API_KEY) return json({ error: "Ο Βοηθός AI δεν έχει ενεργοποιηθεί (λείπει το ANTHROPIC_API_KEY)." }, 503);
-    const me = await currentUser(req);
-    if (!me || me.role === "trainer") return json({ error: "Δεν επιτρέπεται η πρόσβαση." }, 403);
+    const who = await identify(req);
+    if (!who.me) return json({ error: who.error }, who.status);
+    const me = who.me;
+    if (me.role === "trainer") return json({ error: "Ο Βοηθός AI δεν είναι διαθέσιμος για τον ρόλο εκπαιδευτή." }, 403);
 
     const body = await req.json().catch(() => ({}));
     const history = Array.isArray(body.messages) ? body.messages.slice(-12) : [];

@@ -15,8 +15,10 @@ export function json(body: unknown, status = 200) {
 }
 
 const URL_ = Deno.env.get("SUPABASE_URL")!;
-const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
-const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("ANON_KEY") ?? "";
+// Πρώτα τα κλειδιά που το αυτόματο deploy παίρνει φρέσκα από το project σε κάθε εκτέλεση (και ελέγχει),
+// μετά όσα δίνει αυτόματα η πλατφόρμα.
+const SERVICE = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const ANON = Deno.env.get("ANON_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || "";
 
 export function adminClient(): SupabaseClient {
   if (!SERVICE) throw new Error("Λείπει το service role key στις ρυθμίσεις του server.");
@@ -34,18 +36,32 @@ export function userClient(req: Request): SupabaseClient {
 
 export type Me = { email: string; name: string; role: "owner" | "hr" | "manager" | "trainer"; store: string | null };
 
-/** Επαληθεύει το token και επιστρέφει τον χρήστη της εφαρμογής (ή null). */
+export type Identity = { me: Me | null; status: number; error?: string };
+
+/**
+ * Ποιος είναι ο χρήστης και τι ρόλο έχει — με ΤΟΝ ΙΔΙΟ έλεγχο που χρησιμοποιεί η εφαρμογή (whoami στη βάση).
+ * Η βάση επαληθεύει την υπογραφή του token και διαβάζει τον ρόλο από τον πίνακα app_users (μόνο ενεργοί).
+ * Κάθε αποτυχία επιστρέφεται με τη δική της αιτία, ώστε ένα τεχνικό πρόβλημα να μη φαίνεται σαν «δεν έχετε δικαίωμα».
+ */
+export async function identify(req: Request): Promise<Identity> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token || (ANON && token === ANON)) {
+    return { me: null, status: 401, error: "Δεν υπάρχει ενεργή σύνδεση. Αποσυνδεθείτε και συνδεθείτε ξανά." };
+  }
+  const { data, error } = await userClient(req).rpc("whoami");
+  if (error) {
+    if (/jwt|token|expired|permission denied for function/i.test(error.message)) {
+      return { me: null, status: 401, error: "Η σύνδεση έληξε ή δεν είναι έγκυρη. Αποσυνδεθείτε και συνδεθείτε ξανά." };
+    }
+    console.error("whoami", error);
+    return { me: null, status: 500, error: "Δεν ήταν δυνατός ο έλεγχος δικαιωμάτων: " + error.message };
+  }
+  if (!data?.email) return { me: null, status: 401, error: "Η σύνδεση δεν είναι έγκυρη. Αποσυνδεθείτε και συνδεθείτε ξανά." };
+  if (!data.role) return { me: null, status: 403, error: `Ο λογαριασμός ${data.email} δεν έχει ενεργό ρόλο στην εφαρμογή.` };
+  return { me: { email: data.email, name: data.name, role: data.role, store: data.store ?? null }, status: 200 };
+}
+
+/** Ο χρήστης της εφαρμογής (ή null). */
 export async function currentUser(req: Request): Promise<Me | null> {
-  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (!token) return null;
-  const admin = adminClient();
-  const { data, error } = await admin.auth.getUser(token);
-  if (error || !data.user?.email) return null;
-  const { data: row } = await admin
-    .from("app_users")
-    .select("email,name,role,store,active")
-    .eq("email", data.user.email.toLowerCase())
-    .maybeSingle();
-  if (!row || !row.active) return null;
-  return row as Me;
+  return (await identify(req)).me;
 }

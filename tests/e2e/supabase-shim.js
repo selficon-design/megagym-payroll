@@ -48,7 +48,13 @@
         };
       },
       rpc(name, args) { return new Q("/rest/v1/rpc/" + name, "POST", args || {}); },
-      functions: { async invoke() { return { data: null, error: { message: "Δεν υπάρχουν λειτουργίες server στον τοπικό έλεγχο.", context: { json: async () => ({}) } } }; } },
+      functions: {
+        async invoke(name, { body } = {}) {
+          const r = await fetch(url + "/functions/v1/" + name, { method: "POST", headers: { ...headers(), "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+          if (!r.ok) return { data: null, error: { message: "Edge Function returned a non-2xx status code", context: r } };
+          return { data: await r.json(), error: null };
+        },
+      },
       auth: {
         async signInWithPassword({ email, password }) {
           const r = await req("POST", "/auth/v1/token?grant_type=password", { body: { email, password } });
@@ -58,7 +64,10 @@
         async getSession() { return { data: { session: load() }, error: null }; },
         async getUser() { const s = load(); return { data: { user: s?.user || null }, error: null }; },
         async signOut() { store(null); listeners.forEach((f) => f("SIGNED_OUT", null)); return { error: null }; },
-        async updateUser() { return { data: {}, error: null }; },
+        async updateUser(attrs) {
+          const r = await req("PUT", "/auth/v1/user", { body: attrs });
+          return r.error ? { data: null, error: r.error } : { data: { user: r.data }, error: null };
+        },
         onAuthStateChange(f) { listeners.push(f); return { data: { subscription: { unsubscribe() {} } } }; },
       },
     };

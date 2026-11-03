@@ -143,6 +143,54 @@ jobs:
             -d "$(jq -n --arg e "$EMAIL" --arg n "$NAME" '{email:$e,name:$n,role:"owner",active:true}')"
           echo "Ο ρόλος ιδιοκτήτριας είναι έτοιμος για $EMAIL."
 
+      - name: Έλεγχος λογαριασμού Γενικής Διευθύντριας
+        # Τα logs είναι δημόσια: τυπώνονται μόνο ναι/όχι και πλήθη, ποτέ άλλα email.
+        env:
+          GM_EMAIL: mariamaneta@megagym.gr
+        run: |
+          H=(-H "apikey: $SERVICE_KEY" -H "Authorization: Bearer $SERVICE_KEY")
+          ROW=$(curl -sS "${H[@]}" "$SUPABASE_URL/rest/v1/app_users?email=eq.$GM_EMAIL&select=role,store,active")
+          ROLE=$(echo "$ROW" | jq -r '.[0].role // "—"'); ACTIVE=$(echo "$ROW" | jq -r '.[0].active // "—"')
+          OWNERS=$(curl -sS "${H[@]}" "$SUPABASE_URL/rest/v1/app_users?role=eq.owner&active=is.true&select=email" | jq 'length')
+          LOGIN="όχι"; BANNED="όχι"; ADMIN_API="όχι"
+          for page in $(seq 1 20); do
+            U=$(curl -sS -w '\n%{http_code}' "${H[@]}" "$SUPABASE_URL/auth/v1/admin/users?page=$page&per_page=200")
+            CODE=$(echo "$U" | tail -1); BODY=$(echo "$U" | sed '$d')
+            [ "$CODE" = "200" ] || break
+            ADMIN_API="ναι"
+            HIT=$(echo "$BODY" | jq -r --arg e "$GM_EMAIL" '[.users[] | select((.email // "" | ascii_downcase) == $e)][0] // empty')
+            if [ -n "$HIT" ]; then
+              LOGIN="ναι"
+              BU=$(echo "$HIT" | jq -r '.banned_until // empty')
+              if [ -n "$BU" ] && [ "$(date -d "$BU" +%s 2>/dev/null || echo 0)" -gt "$(date +%s)" ]; then BANNED="ναι"; fi
+              break
+            fi
+            [ "$(echo "$BODY" | jq '.users | length')" -lt 200 ] && break
+          done
+          SAME="όχι"; [ "$(echo "$OWNER_EMAIL" | tr 'A-Z' 'a-z' | xargs)" = "$GM_EMAIL" ] && SAME="ναι"
+          echo "Ρόλος στην εφαρμογή: $ROLE · ενεργός: $ACTIVE"
+          echo "Λογαριασμός σύνδεσης: $LOGIN · κλειδωμένος: $BANNED"
+          echo "Το κλειδί διαχείρισης λογαριασμών λειτουργεί: $ADMIN_API"
+          echo "Ενεργές Γενικές Διευθύντριες (owner): $OWNERS"
+          echo "Το secret OWNER_EMAIL είναι το ίδιο email: $SAME"
+          {
+            echo "### Λογαριασμός Γενικής Διευθύντριας ($GM_EMAIL)"
+            echo "- Ρόλος: **$ROLE** · ενεργός: $ACTIVE · λογαριασμός σύνδεσης: $LOGIN · κλειδωμένος: $BANNED"
+            echo "- Κλειδί διαχείρισης λογαριασμών: $ADMIN_API · ενεργοί λογαριασμοί owner: $OWNERS · OWNER_EMAIL ίδιο: $SAME"
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$ROLE" = "owner" ] && [ "$ACTIVE" = "true" ] || { echo "::error::Ο λογαριασμός $GM_EMAIL δεν είναι ενεργή Γενική Διευθύντρια."; exit 1; }
+          [ "$ADMIN_API" = "ναι" ] || echo "::error::Το κλειδί service_role δεν δέχεται κλήσεις διαχείρισης λογαριασμών· η προσθήκη χρηστών και οι κωδικοί δεν θα λειτουργούν."
+          [ "$LOGIN" = "ναι" ] || echo "::warning::Δεν βρέθηκε λογαριασμός σύνδεσης για $GM_EMAIL."
+          [ "$BANNED" = "όχι" ] || echo "::warning::Ο λογαριασμός σύνδεσης $GM_EMAIL είναι κλειδωμένος."
+          [ "$SAME" = "ναι" ] || echo "::warning::Το secret OWNER_EMAIL δείχνει σε άλλο email (από προηγούμενη ρύθμιση). Αλλάξτε το σε $GM_EMAIL στο GitHub → Settings → Secrets."
+
+      - name: Έλεγχος λειτουργίας διαχείρισης λογαριασμών
+        run: |
+          # Χωρίς σύνδεση η λειτουργία πρέπει να απαντά «δεν υπάρχει σύνδεση» (401), όχι «μόνο η διαχειρίστρια» (403).
+          OUT=$(curl -sS -w '\n%{http_code}' -X POST "$SUPABASE_URL/functions/v1/admin-users" -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" -H "Content-Type: application/json" -d '{"action":"statuses"}')
+          CODE=$(echo "$OUT" | tail -1); echo "Απάντηση χωρίς σύνδεση: $CODE $(echo "$OUT" | sed '$d')"
+          [ "$CODE" = "401" ] || { echo "::error::Η λειτουργία admin-users δεν απάντησε όπως αναμενόταν ($CODE)."; exit 1; }
+
       - name: Ετοιμασία εφαρμογής
         run: |
           mkdir -p /tmp/sb && cd /tmp/sb && npm init -y > /dev/null && npm i @supabase/supabase-js@2 --silent

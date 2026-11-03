@@ -10,4 +10,5 @@ reset role;
 create table public.zz_snapshot as
   select id, status, amount, statement, signature, signer, signed_at, md5(declarations::text) as h from declarations;
 create table public.zz_snapshot_emp as select code, md5(row(code,first,last,store,company,status,created_at)::text) h from employees;
-create table public.zz_snapshot_audit as select count(*) n from audit_log;
+create table public.zz_snapshot_audit as select id, md5(audit_log::text) h from audit_log;
+create table public.zz_snapshot_users as select email, md5(app_users::text) h from app_users where email <> 'mariamaneta@megagym.gr';

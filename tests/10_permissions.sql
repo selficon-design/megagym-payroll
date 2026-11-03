@@ -58,7 +58,11 @@ reset role;
 select pg_temp.as_user('owner@x.gr');
 select void_declaration((select id from declarations where status='signed'),'Λάθος ποσό');
 select pg_temp.eq(((select prepare_declarations('2026-10','[{"code":"E1","amount":"1300"}]'))->>'created')::int, 1, 'νέα δήλωση μετά από ακύρωση');
-select pg_temp.expect_fail($$delete from app_users where email='owner@x.gr'$$, 'τελευταία ιδιοκτήτρια');
+-- Με δύο ενεργές ΓΔ η μία μπορεί να απενεργοποιηθεί· η τελευταία ενεργή όχι
+update app_users set active = false where email = 'mariamaneta@megagym.gr';
+select pg_temp.expect_fail($$delete from app_users where email='owner@x.gr'$$, 'τελευταία ενεργή ΓΔ δεν διαγράφεται');
+select pg_temp.expect_fail($$update app_users set role='hr' where email='owner@x.gr'$$, 'τελευταία ενεργή ΓΔ δεν υποβιβάζεται');
+update app_users set active = true where email = 'mariamaneta@megagym.gr';
 insert into app_users(email,name,role,store) values('new@x.gr','Νέος Manager','manager','Άλιμος');
 select pg_temp.expect_fail($$insert into app_users(email,name,role) values('m2@x.gr','Χωρίς κατάστημα','manager')$$, 'manager χωρίς κατάστημα');
 select pg_temp.expect_fail($$delete from declarations$$, 'διαγραφή δηλώσεων');

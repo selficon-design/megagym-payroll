@@ -1,7 +1,7 @@
-// Διαχείριση λογαριασμών σύνδεσης — μόνο για την ιδιοκτήτρια.
+// Διαχείριση λογαριασμών σύνδεσης — μόνο για τη Γενική Διευθύντρια (ρόλος owner).
 // Ο ρόλος/κατάστημα αποθηκεύεται από την εφαρμογή στον πίνακα app_users (με καταγραφή στο ιστορικό).
 // Εδώ γίνονται μόνο όσα χρειάζονται το "κλειδί διαχειριστή": δημιουργία λογαριασμού, κωδικός, κλείδωμα, διαγραφή.
-import { adminClient, cors, currentUser, json } from "../_shared/common.ts";
+import { adminClient, cors, identify, json } from "../_shared/common.ts";
 
 async function findAuthUser(email: string) {
   const admin = adminClient();
@@ -20,8 +20,10 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Μη έγκυρο αίτημα." }, 405);
 
   try {
-    const me = await currentUser(req);
-    if (!me || me.role !== "owner") return json({ error: "Μόνο η ιδιοκτήτρια διαχειρίζεται λογαριασμούς." }, 403);
+    const who = await identify(req);
+    if (!who.me) return json({ error: who.error }, who.status);
+    const me = who.me;
+    if (me.role !== "owner") return json({ error: "Μόνο η Γενική Διευθύντρια διαχειρίζεται λογαριασμούς." }, 403);
 
     const body = await req.json().catch(() => ({}));
     const action = String(body.action ?? "");
@@ -32,7 +34,7 @@ Deno.serve(async (req) => {
       const out: Record<string, unknown> = {};
       for (let page = 1; page < 50; page++) {
         const { data, error } = await admin0.auth.admin.listUsers({ page, perPage: 200 });
-        if (error) throw error;
+        if (error) return json({ error: "Ο server δεν έχει πρόσβαση στους λογαριασμούς σύνδεσης (κλειδί service_role): " + error.message }, 500);
         for (const u of data.users) {
           out[(u.email ?? "").toLowerCase()] = {
             hasLogin: true,
@@ -49,7 +51,11 @@ Deno.serve(async (req) => {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "Μη έγκυρο email." }, 400);
 
     const admin = adminClient();
-    const { data: appUser } = await admin.from("app_users").select("email,active").eq("email", email).maybeSingle();
+    const { data: appUser, error: appErr } = await admin.from("app_users").select("email,active").eq("email", email).maybeSingle();
+    if (appErr) {
+      console.error("app_users", appErr);
+      return json({ error: "Ο server δεν έχει πρόσβαση διαχείρισης (κλειδί service_role): " + appErr.message }, 500);
+    }
     if (!appUser && action !== "delete") {
       return json({ error: "Αποθηκεύστε πρώτα τον χρήστη στη λίστα χρηστών." }, 400);
     }
