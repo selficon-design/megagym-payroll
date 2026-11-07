@@ -3,3 +3,4 @@ shots/
 ids.json
 *.log
 postgrest*
+__pycache__/

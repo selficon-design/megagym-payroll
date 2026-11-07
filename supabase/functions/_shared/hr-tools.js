@@ -285,15 +285,16 @@ export async function runHrTool(db, name, input, me) {
       const [qs, vers, atts] = await Promise.all([
         all(() => db.from("questionnaires").select("id,title,ends_at,status")),
         all(() => db.from("questionnaire_versions").select("id,version")),
-        all(() => db.from("assessment_attempts").select("questionnaire_id,version_id,employee_code,employee_name,store,specialty,opened_by,started_at,submitted_at,status,score,max_score")),
+        all(() => db.from("assessment_attempts").select("questionnaire_id,version_id,employee_code,employee_name,store,specialty,opened_by,started_at,submitted_at,status,score,max_score,due_at,opened_role")),
       ]);
       const Q = Object.fromEntries(qs.map((q) => [q.id, q])), V = Object.fromEntries(vers.map((v) => [v.id, v.version]));
       const pickQ = qs.filter((q) => !input.title || norm(q.title).includes(norm(input.title)));
       const rows = [];
       for (const a of atts) {
         if (!pickQ.some((q) => q.id === a.questionnaire_id)) continue;
-        const state = a.status === "in_progress" && Q[a.questionnaire_id]?.ends_at && new Date(Q[a.questionnaire_id].ends_at) < new Date() ? "expired" : a.status;
-        rows.push({ q: a.questionnaire_id, code: a.employee_code, name: a.employee_name, store: a.store, specialty: a.specialty, state, version: V[a.version_id], opened_by: a.opened_by, submitted: athens(a.submitted_at), score: a.score, max: a.max_score });
+        const end = a.due_at || Q[a.questionnaire_id]?.ends_at;
+        const state = a.status === "in_progress" && end && new Date(end) < new Date() ? "expired" : a.status;
+        rows.push({ q: a.questionnaire_id, code: a.employee_code, name: a.employee_name, store: a.store, specialty: a.specialty, state, version: V[a.version_id], opened_by: a.opened_role === "link" ? "προσωπικός σύνδεσμος" : a.opened_by, submitted: athens(a.submitted_at), score: a.score, max: a.max_score });
       }
       // όσοι δεν ξεκίνησαν (για ενεργά/κλειστά ερωτηματολόγια)
       for (const q of pickQ.filter((q) => q.status !== "draft")) {

@@ -93,12 +93,13 @@ export async function assessmentView(params) {
   <div class="page-head"><div><div class="eyebrow">Ερωτηματολόγιο ${current ? `· ενεργή έκδοση ${current.version}` : ""}${latest?.status === "draft" && current ? ` · πρόχειρη έκδοση ${latest.version}` : ""}</div><h1>${h(q.title)}</h1>
     <p class="muted">${qBadge(q.status)} ${q.starts_at ? `Διαθέσιμο ${athens(q.starts_at)} → ${athens(q.ends_at)} (ώρα Ελλάδας)` : "Χωρίς διάστημα διαθεσιμότητας"}</p></div>
     <a class="btn" href="#/assessments">← Ερωτηματολόγια</a></div>
-  <div class="tabs">${[["settings", "Ρυθμίσεις & διαθεσιμότητα"], ["questions", "Ερωτήσεις"], ["results", "Αποτελέσματα"]].map(([k, l]) => `<a href="#/assessment?id=${id}&tab=${k}" class="${k === tab ? "on" : ""}">${l}</a>`).join("")}</div>
+  <div class="tabs">${[["settings", "Ρυθμίσεις & διαθεσιμότητα"], ["questions", "Ερωτήσεις"], ...(admin ? [["links", "Προσωπικοί σύνδεσμοι"]] : []), ["results", "Αποτελέσματα"]].map(([k, l]) => `<a href="#/assessment?id=${id}&tab=${k}" class="${k === tab ? "on" : ""}">${l}</a>`).join("")}</div>
   <div id="qa-body"></div>`;
   const body = $("#qa-body");
   const reload = () => { invalidate(); assessmentView(params); };
   if (tab === "settings") return settingsTab(q, body, admin, reload);
   if (tab === "questions") return questionsTab(q, body, admin, reload);
+  if (tab === "links" && admin) return linksTab(q, body, reload);
   return resultsTab(q, body);
 }
 
@@ -129,7 +130,7 @@ async function settingsTab(q, body, admin, reload) {
         <select id="qs-rule" ${dis}><option value="">— δεν έχει οριστεί —</option><option value="all_or_nothing" ${latest?.multi_rule === "all_or_nothing" ? "selected" : ""}>Όλα ή τίποτα: πλήρεις βαθμοί μόνο αν επιλεγούν ακριβώς οι σωστές</option><option value="partial" ${latest?.multi_rule === "partial" ? "selected" : ""}>Μερική: βαθμοί × (σωστές επιλογές − λάθος επιλογές) ÷ πλήθος σωστών, ελάχιστο 0</option></select>
         ${checks.length ? `<div class="note warn" style="margin-top:12px"><strong>Πριν από την ενεργοποίηση:</strong><ul style="margin:6px 0 0 18px">${checks.map((c) => `<li>${h(c)}</li>`).join("")}</ul></div>` : admin ? `<div class="note" style="margin-top:12px">Οι έλεγχοι πέρασαν.</div>` : ""}
         ${admin ? `<div class="row-actions" style="margin-top:14px">${latest?.status === "draft" || q.status !== "active" ? `<button class="btn primary" id="qs-pub" ${checks.length ? "disabled" : ""}>${q.status === "active" ? `Ενεργοποίηση έκδοσης ${latest.version}` : "Ενεργοποίηση"}</button>` : ""}${q.status === "active" ? `<button class="btn danger" id="qs-close">Κλείσιμο</button>` : ""}</div>` : ""}
-        <p class="muted small" style="margin-top:10px">Δεν έχουν οριστεί χρονόμετρο διάρκειας ούτε επαναλήψεις: κάθε εργαζόμενος υποβάλλει μία φορά ανά ερωτηματολόγιο.</p>
+        <p class="muted small" style="margin-top:10px">Δεν έχει οριστεί χρονόμετρο διάρκειας. Κάθε ανάθεση δέχεται μία οριστική υποβολή· νέα αξιολόγηση του ίδιου εργαζομένου γίνεται μόνο ως «Επαναξιολόγηση» από τους «Προσωπικούς συνδέσμους».</p>
       </div>
     </div></div>`;
   const drawP = () => {
@@ -222,7 +223,7 @@ function importPreview(q, rows, formulaRows, filename, reload) {
 async function resultsTab(q, body) {
   const [targets, atts, vers] = await Promise.all([q.status === "draft" ? [] : S.api.assessmentTargets(q.id), S.api.attempts({ questionnaire: q.id }), S.api.versionsAll()]);
   const vN = Object.fromEntries(vers.map((v) => [v.id, v.version]));
-  const byEmp = Object.fromEntries(atts.map((a) => [a.employee_code, a]));
+  const byEmp = Object.fromEntries([...atts].reverse().map((a) => [a.employee_code, a]));   // πιο πρόσφατη ανά εργαζόμενο
   const counts = {}; for (const t of targets) counts[t.state] = (counts[t.state] || 0) + 1;
   body.innerHTML = `<div class="card">
     <div class="chips" style="margin-bottom:12px">${Object.entries(ATTEMPT_STATE).map(([k, v]) => `<span class="chip">${v.label}<span class="n">${counts[k] || 0}</span></span>`).join("")}</div>
@@ -255,7 +256,7 @@ export async function attemptDialog(attemptId) {
   };
   const inProgress = a.status === "in_progress";
   openDialog(`<div class="dlg-head"><div><div class="eyebrow">${h(q.title)} · έκδοση ${ver?.version}</div><h2>${h(a.employee_name)}</h2>
-      <p class="muted small">${h(a.store)} · ${h(a.specialty)} (κατά τη συμπλήρωση) · άνοιξε ${h(a.opened_by)} · έναρξη ${athens(a.started_at)}${a.submitted_at ? ` · υποβολή ${athens(a.submitted_at)}` : ""}</p></div><button class="icon-btn" data-close>✕</button></div>
+      <p class="muted small">${h(a.store)} · ${h(a.specialty)} (κατά τη συμπλήρωση) · ${a.opened_role === "link" ? "προσωπικός σύνδεσμος" : `άνοιξε ${h(a.opened_by)}`} · έναρξη ${athens(a.started_at)}${a.submitted_at ? ` · υποβολή ${athens(a.submitted_at)}` : ""}</p></div><button class="icon-btn" data-close>✕</button></div>
     ${inProgress ? `<div class="note warn">Δεν έχει υποβληθεί οριστικά. Οι προσωρινές απαντήσεις δεν θεωρούνται ολοκληρωμένη αξιολόγηση και δεν βαθμολογούνται.</div>` : `
     <div class="grid g3" style="margin-top:12px"><div class="card kpi"><div class="label">Συνολικό</div><div class="value num">${a.max_score ? `${num(a.score)} / ${num(a.max_score)}` : "—"}</div><div class="hint">${a.max_score ? fmtP(pctOf(a)) : "χωρίς έγκυρο κανόνα βαθμολόγησης"}${a.status === "pending_manual" ? " · αναμένει χειροκίνητη βαθμολόγηση" : ""}</div></div>
       <div class="card" style="grid-column:span 2"><div class="label muted small">Ανά ενότητα</div>${Object.entries(sections).map(([s, v]) => `<div class="small">${h(s)}: <strong>${v.max ? (v.pending ? "αναμένει βαθμολόγηση" : `${num(v.got)} / ${num(v.max)}`) : "χωρίς βαθμολογία (π.χ. αυτοαξιολόγηση)"}</strong></div>`).join("")}</div></div>`}
@@ -320,7 +321,7 @@ export async function assessReports() {
   const qT = Object.fromEntries(qs.map((q) => [q.id, q])), vN = Object.fromEntries(vers.map((v) => [v.id, v.version]));
   // Εκκρεμείς: για επιλεγμένο ερωτηματολόγιο φέρνουμε και όσους δεν ξεκίνησαν
   const targets = F.q ? await S.api.assessmentTargets(F.q) : [];
-  const stateOf = (a) => (a.status === "in_progress" && qT[a.questionnaire_id]?.ends_at && new Date(qT[a.questionnaire_id].ends_at) < new Date() ? "expired" : a.status);
+  const stateOf = (a) => { const end = a.due_at || qT[a.questionnaire_id]?.ends_at; return a.status === "in_progress" && end && new Date(end) < new Date() ? "expired" : a.status; };
   let rows = atts.map((a) => ({ ...a, state: stateOf(a), title: qT[a.questionnaire_id]?.title, version: vN[a.version_id] }));
   if (F.q) for (const t of targets.filter((t) => t.state === "not_started")) rows.push({ employee_code: t.employee_code, employee_name: t.employee_name, store: t.store, specialty: t.specialty, state: "not_started", questionnaire_id: F.q, title: qT[F.q]?.title, version: null });
   rows = rows.filter((r) => (!F.q || r.questionnaire_id === F.q) && (!F.ver || String(r.version) === F.ver) && (!F.store || r.store === F.store) && (!F.spec || r.specialty === F.spec) &&
@@ -364,4 +365,200 @@ export async function assessReports() {
   $$("[data-att]").forEach((tr) => (tr.onclick = () => attemptDialog(tr.dataset.att)));
   $("#rp-x").onclick = () => downloadXlsx("Αξιολογήσεις.xlsx", { "Αξιολογήσεις": [["Κωδικός", "Εργαζόμενος", "Ερωτηματολόγιο", "Έκδοση", "Κατάστημα", "Ειδικότητα", "Άνοιξε", "Έναρξη", "Υποβολή", "Κατάσταση", "Βαθμοί", "Μέγιστο", "%"],
     ...rows.map((r) => [r.employee_code, r.employee_name, r.title, r.version ?? "", r.store, r.specialty || "", r.opened_by || "", r.started_at ? athens(r.started_at) : "", r.submitted_at ? athens(r.submitted_at) : "", ATTEMPT_STATE[r.state].label, r.score ?? "", r.max_score ?? "", pctOf(r) === null ? "" : Math.round(pctOf(r) * 10) / 10])] });
+}
+
+// ═══════════════════════ Προσωπικοί σύνδεσμοι (μόνο ΓΔ) ═══════════════════════
+export const LINK_STATE = {
+  ready: { label: "Έτοιμος · δεν άνοιξε", cls: "b-info" },
+  scheduled: { label: "Δεν ξεκίνησε ακόμη", cls: "b-missing" },
+  in_progress: { label: "Σε εξέλιξη", cls: "b-info" },
+  submitted: { label: "Υποβλήθηκε", cls: "b-signed" },
+  pending_manual: { label: "Υποβλήθηκε · αναμένει βαθμολόγηση", cls: "b-pending" },
+  expired: { label: "Έληξε χωρίς υποβολή", cls: "b-voided" },
+  cancelled: { label: "Ακυρώθηκε", cls: "b-voided" },
+};
+const linkBadge = (s) => `<span class="badge ${LINK_STATE[s]?.cls || ""}">${LINK_STATE[s]?.label || h(s)}</span>`;
+const DONE = ["submitted", "pending_manual"];
+/** Πλήρης διεύθυνση της σελίδας αξιολόγησης· το κλειδί μπαίνει μετά το # (δεν στέλνεται σε server ή logs). */
+export const linkUrl = (token) => new URL("a.html", location.href.split("#")[0]).href + "#" + token;
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch {
+    const t = document.createElement("textarea"); t.value = text; t.style.position = "fixed"; t.style.opacity = "0"; document.body.append(t); t.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch {} t.remove(); return ok;
+  }
+}
+const linesFor = (rows) => rows.map((r) => `${r.employee_name} · ${r.store}\n${linkUrl(r.token)}`).join("\n\n");
+
+async function linksTab(q, body, reload) {
+  const [links, emps, atts] = await Promise.all([S.api.linkList(q.id), getEmployees(), S.api.attempts({ questionnaire: q.id })]);
+  const F = (S.filters.links ??= { store: "", state: "", search: "" });
+  const counts = {}; for (const l of links) counts[l.state] = (counts[l.state] || 0) + 1;
+  const list = links.filter((l) => (!F.store || l.store === F.store) && (!F.state || (F.state === "open" ? !DONE.includes(l.state) && l.state !== "cancelled" : l.state === F.state)) &&
+    (!F.search || norm(`${l.employee_name} ${l.employee_code}`).includes(norm(F.search))));
+  const copyable = list.filter((l) => l.token);
+  const stores = [...new Set(links.map((l) => l.store))].sort();
+  body.innerHTML = `<div class="card">
+    <div class="card-head"><h3>Προσωπικοί σύνδεσμοι</h3>
+      <div class="row-actions">${q.status === "active" ? `<button class="btn primary" id="lk-new">Δημιουργία προσωπικών συνδέσμων</button>` : ""}</div></div>
+    <p class="muted small" style="margin:4px 0 12px">Κάθε σύνδεσμος ανοίγει <strong>μόνο</strong> την αξιολόγηση ενός εργαζομένου, χωρίς λογαριασμό ή email. Δώστε τον στον manager· εκείνος τον ανοίγει στον υπολογιστή του καταστήματος και ο εργαζόμενος συμπληρώνει. Όταν ανοίγει ο σύνδεσμος, ο browser αποσυνδέεται από τη διαχείριση.</p>
+    ${q.status !== "active" ? `<div class="note warn">Νέοι σύνδεσμοι δημιουργούνται μόνο όταν το ερωτηματολόγιο είναι ενεργό.</div>` : ""}
+    ${links.length ? `
+    <div class="chips" style="margin-bottom:12px">${Object.entries(LINK_STATE).filter(([k]) => counts[k]).map(([k, v]) => `<span class="chip">${v.label}<span class="n">${counts[k]}</span></span>`).join("")}</div>
+    <div class="toolbar">
+      <select id="lk-store"><option value="">Όλα τα καταστήματα</option>${stores.map((x) => `<option ${x === F.store ? "selected" : ""}>${h(x)}</option>`).join("")}</select>
+      <select id="lk-state"><option value="">Κάθε κατάσταση</option><option value="open" ${F.state === "open" ? "selected" : ""}>Εκκρεμείς</option>${Object.entries(LINK_STATE).map(([k, v]) => `<option value="${k}" ${F.state === k ? "selected" : ""}>${v.label}</option>`).join("")}</select>
+      <input type="search" id="lk-s" placeholder="Εργαζόμενος" value="${h(F.search)}">
+      <button class="btn" id="lk-copyall" ${copyable.length ? "" : "disabled"}>⧉ Αντιγραφή λίστας (${copyable.length})</button>
+      <button class="btn" id="lk-ext" disabled>Διαθεσιμότητα επιλεγμένων</button>
+    </div>
+    <div class="table-wrap"><table class="stack"><thead><tr><th style="width:28px"><input type="checkbox" id="lk-all" title="Επιλογή όλων"></th><th>Εργαζόμενος</th><th>Κατάστημα</th><th>Διαθεσιμότητα (ώρα Ελλάδας)</th><th>Κατάσταση</th><th></th></tr></thead><tbody>
+      ${list.map((l) => `<tr data-id="${h(l.id)}">
+        <td>${DONE.includes(l.state) ? "" : `<input type="checkbox" class="lk-sel" value="${h(l.id)}">`}</td>
+        <td><strong>${h(l.employee_name)}</strong><span class="sub">${h(l.employee_code)} · έκδοση ${l.version}${l.round > 1 ? ` · επαναξιολόγηση (${l.round}ος γύρος)` : ""}</span></td>
+        <td data-l="Κατάστημα" class="small">${h(l.store)}<span class="sub">${h(l.specialty)}</span></td>
+        <td data-l="Διαθεσιμότητα" class="small">${athens(l.starts_at)} →<br>${athens(l.ends_at)}</td>
+        <td>${linkBadge(l.state)}<span class="sub">${l.submitted_at ? "υποβλήθηκε " + athens(l.submitted_at) : l.last_saved_at ? "τελευταία αποθήκευση " + athens(l.last_saved_at) : l.opened_at ? "άνοιξε " + athens(l.opened_at) : ""}${l.link_no > 1 ? ` · σύνδεσμος #${l.link_no}` : ""}</span></td>
+        <td class="acts" style="text-align:right;white-space:nowrap">
+          ${l.token ? `<button class="btn sm primary" data-copy="${h(l.id)}">⧉ Αντιγραφή</button>` : ""}
+          ${DONE.includes(l.state) ? (l.attempt_id ? `<button class="btn sm" data-res="${h(l.attempt_id)}">Αποτέλεσμα</button>` : "") : `<button class="btn sm" data-re="${h(l.id)}">${l.state === "cancelled" ? "Επανενεργοποίηση" : "Επανέκδοση"}</button>`}
+          ${!DONE.includes(l.state) && l.state !== "cancelled" ? `<button class="btn sm danger" data-cancel="${h(l.id)}">Ακύρωση</button>` : ""}
+          ${!DONE.includes(l.state) ? `<button class="btn sm" data-win="${h(l.id)}">Διαθεσιμότητα</button>` : ""}
+          <button class="btn sm" data-hist="${h(l.id)}">Ιστορικό</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">Καμία εγγραφή με αυτά τα φίλτρα.</td></tr>`}
+    </tbody></table></div>`
+    : `<div class="empty"><div class="big">🔗</div>Δεν έχουν δημιουργηθεί προσωπικοί σύνδεσμοι για αυτό το ερωτηματολόγιο.</div>`}</div>`;
+
+  const byId = Object.fromEntries(links.map((l) => [l.id, l]));
+  const re = () => linksTab(q, body, reload);
+  $("#lk-new") && ($("#lk-new").onclick = () => createLinksDialog(q, links, emps, atts, reload));
+  if (!links.length) return;
+  $("#lk-store").onchange = (e) => { F.store = e.target.value; re(); };
+  $("#lk-state").onchange = (e) => { F.state = e.target.value; re(); };
+  $("#lk-s").oninput = (e) => { F.search = e.target.value; re().then(() => { const i = $("#lk-s"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }); };
+  const sel = () => $$(".lk-sel:checked").map((x) => x.value);
+  const syncSel = () => { const n = sel().length; $("#lk-ext").disabled = !n; $("#lk-ext").textContent = n ? `Διαθεσιμότητα επιλεγμένων (${n})` : "Διαθεσιμότητα επιλεγμένων"; };
+  $("#lk-all").onchange = (e) => { $$(".lk-sel").forEach((x) => (x.checked = e.target.checked)); syncSel(); };
+  $$(".lk-sel").forEach((x) => (x.onchange = syncSel));
+  $("#lk-ext").onclick = () => windowDialog(sel().map((id) => byId[id]), reload);
+  $("#lk-copyall").onclick = async () => {
+    const ok = await copyText(linesFor(copyable));
+    toast(ok ? `Αντιγράφηκαν ${copyable.length} σύνδεσμοι (όνομα · κατάστημα · σύνδεσμος).` : "Η αντιγραφή δεν επετράπη από τον browser.", !ok);
+  };
+  $$("[data-copy]").forEach((b) => (b.onclick = async () => { const l = byId[b.dataset.copy]; const ok = await copyText(linkUrl(l.token)); toast(ok ? `Ο σύνδεσμος του/της ${l.employee_name} αντιγράφηκε.` : "Η αντιγραφή δεν επετράπη από τον browser.", !ok); }));
+  $$("[data-res]").forEach((b) => (b.onclick = () => attemptDialog(b.dataset.res)));
+  $$("[data-hist]").forEach((b) => (b.onclick = () => historyDialog(byId[b.dataset.hist])));
+  $$("[data-win]").forEach((b) => (b.onclick = () => windowDialog([byId[b.dataset.win]], reload)));
+  $$("[data-cancel]").forEach((b) => (b.onclick = async () => {
+    const l = byId[b.dataset.cancel];
+    const note = await confirmBox("Ακύρωση συνδέσμου", `Ο σύνδεσμος του/της ${l.employee_name} θα σταματήσει να λειτουργεί αμέσως. Οι προσωρινές απαντήσεις μένουν· μπορείτε αργότερα να εκδώσετε νέο σύνδεσμο.`, { ok: "Ακύρωση συνδέσμου", danger: true, input: "Αιτιολογία" });
+    if (!note) return;
+    try { await S.api.linkCancel(l.id, note); toast("Ο σύνδεσμος ακυρώθηκε."); reload(); } catch (e) { toast(e.message, true); }
+  }));
+  $$("[data-re]").forEach((b) => (b.onclick = async () => {
+    const l = byId[b.dataset.re];
+    const ok = await confirmBox(l.state === "cancelled" ? "Νέος σύνδεσμος" : "Επανέκδοση συνδέσμου", `Θα εκδοθεί νέος σύνδεσμος για ${l.employee_name}${l.state === "cancelled" ? "" : " και ο τωρινός θα σταματήσει να λειτουργεί αμέσως"}. Οι απαντήσεις που έχουν αποθηκευτεί μένουν.`, { ok: "Έκδοση νέου συνδέσμου" });
+    if (!ok) return;
+    try {
+      const r = await S.api.linkReissue(l.id);
+      const copied = await copyText(linkUrl(r.token));
+      toast(copied ? "Ο νέος σύνδεσμος εκδόθηκε και αντιγράφηκε." : "Ο νέος σύνδεσμος εκδόθηκε."); reload();
+    } catch (e) { toast(e.message, true); }
+  }));
+}
+
+function createLinksDialog(q, links, emps, atts, reload) {
+  const openLink = new Set(links.filter((l) => !DONE.includes(l.state) && l.state !== "cancelled").map((l) => l.employee_code));
+  const done = new Set(atts.filter((a) => a.status !== "in_progress").map((a) => a.employee_code));
+  const pre = q.participants ? new Set(q.participants) : null;
+  const eligible = emps.filter((e) => e.status === "Ενεργός" && q.specialties.includes(e.specialty)).sort((a, b) => (a.store + a.last + a.first).localeCompare(b.store + b.last + b.first, "el"));
+  const stores = [...new Set(eligible.map((e) => e.store))];
+  const future = q.ends_at && new Date(q.ends_at) > new Date();
+  openDialog(`<div class="dlg-head"><div><div class="eyebrow">${h(q.title)}</div><h2>Δημιουργία προσωπικών συνδέσμων</h2></div><button class="icon-btn" data-close>✕</button></div>
+    <p class="muted small">Ένας διαφορετικός σύνδεσμος για κάθε εργαζόμενο, για την τρέχουσα ενεργή έκδοση του ερωτηματολογίου και το διάστημα που ορίζετε εδώ (ώρα Ελλάδας).</p>
+    <div class="grid g2"><div><label>Έναρξη διαθεσιμότητας</label><input type="datetime-local" id="nl-s" value="${future ? athensInput(q.starts_at) : ""}"></div>
+      <div><label>Λήξη διαθεσιμότητας</label><input type="datetime-local" id="nl-e" value="${future ? athensInput(q.ends_at) : ""}"></div></div>
+    <label>Συμμετέχοντες</label>
+    <div class="toolbar" style="margin-bottom:6px"><select id="nl-store"><option value="">Όλα τα καταστήματα</option>${stores.map((x) => `<option>${h(x)}</option>`).join("")}</select>
+      <button class="btn sm" id="nl-all">Επιλογή όλων</button><button class="btn sm" id="nl-none">Καμία</button>
+      <label class="check" style="margin:0"><input type="checkbox" id="nl-re"> Επαναξιολόγηση (νέα ανάθεση για όσους έχουν ήδη υποβάλει)</label></div>
+    <div class="plist" id="nl-list" style="max-height:42vh;overflow:auto"></div>
+    <p id="nl-m" class="form-msg"></p>
+    <div class="dlg-foot"><span class="muted small" id="nl-n" style="margin-right:auto"></span><button class="btn" data-close>Άκυρο</button><button class="btn primary" id="nl-ok">Δημιουργία προσωπικών συνδέσμων</button></div>`, {
+    wide: true,
+    onOpen() {
+      const chosen = new Set(eligible.filter((e) => !openLink.has(e.code) && !done.has(e.code) && (!pre || pre.has(e.code))).map((e) => e.code));
+      const blocked = (e) => openLink.has(e.code) ? "έχει ήδη ενεργό σύνδεσμο" : done.has(e.code) && !$("#nl-re").checked ? "έχει ήδη υποβάλει" : "";
+      const draw = () => {
+        const st = $("#nl-store").value;
+        $("#nl-list").innerHTML = eligible.filter((e) => !st || e.store === st).map((e) => { const b = blocked(e); if (b) chosen.delete(e.code);
+          return `<label class="check"><input type="checkbox" value="${h(e.code)}" ${chosen.has(e.code) ? "checked" : ""} ${b ? "disabled" : ""}> ${h(e.last)} ${h(e.first)} <span class="muted small">${h(e.code)} · ${h(e.store)} · ${h(e.specialty)}${b ? ` · <em>${b}</em>` : ""}</span></label>`; }).join("") || `<p class="muted small">Δεν υπάρχουν ενεργοί εργαζόμενοι στις ειδικότητες του ερωτηματολογίου.</p>`;
+        $$("#nl-list input").forEach((i) => (i.onchange = () => { i.checked ? chosen.add(i.value) : chosen.delete(i.value); count(); }));
+        count();
+      };
+      const count = () => ($("#nl-n").textContent = `Επιλεγμένοι: ${chosen.size}`);
+      $("#nl-store").onchange = draw; $("#nl-re").onchange = draw;
+      $("#nl-all").onclick = () => { $$("#nl-list input:not(:disabled)").forEach((i) => chosen.add(i.value)); draw(); };
+      $("#nl-none").onclick = () => { $$("#nl-list input").forEach((i) => chosen.delete(i.value)); draw(); };
+      draw();
+      $("#nl-ok").onclick = async () => {
+        const btn = $("#nl-ok"); if (btn.disabled) return;
+        if (!chosen.size) return ($("#nl-m").textContent = "Επιλέξτε συμμετέχοντες.");
+        btn.disabled = true;
+        try {
+          const r = await S.api.linkCreate(q.id, [...chosen], $("#nl-s").value, $("#nl-e").value, $("#nl-re").checked);
+          resultDialog(r, reload);
+        } catch (e) { $("#nl-m").textContent = e.message; btn.disabled = false; }
+      };
+    },
+  });
+}
+
+function resultDialog(r, reload) {
+  const ok = r.rows.filter((x) => x.ok), bad = r.rows.filter((x) => !x.ok);
+  openDialog(`<div class="dlg-head"><h2>Δημιουργήθηκαν ${r.created} σύνδεσμοι</h2><button class="icon-btn" data-close>✕</button></div>
+    ${bad.length ? `<div class="note warn"><strong>Δεν δημιουργήθηκαν (${bad.length}):</strong><ul style="margin:6px 0 0 18px">${bad.map((x) => `<li>${h(x.employee_name || x.employee_code)}: ${h(x.error)}</li>`).join("")}</ul></div>` : ""}
+    ${ok.length ? `<p class="muted small" style="margin-top:10px">Αντιγράψτε τη λίστα και δώστε σε κάθε manager τους συνδέσμους του καταστήματός του. Τους συνδέσμους μπορείτε να τους αντιγράψετε ξανά οποτεδήποτε από τη λίστα.</p>
+      <div class="table-wrap" style="max-height:40vh"><table><tbody>${ok.map((x) => `<tr><td><strong>${h(x.employee_name)}</strong><span class="sub">${h(x.store)}</span></td><td class="small" style="word-break:break-all">${h(linkUrl(x.token))}</td></tr>`).join("")}</tbody></table></div>` : ""}
+    <div class="dlg-foot"><button class="btn" data-close>Κλείσιμο</button>${ok.length ? `<button class="btn primary" id="rs-copy">⧉ Αντιγραφή όλων</button>` : ""}</div>`, {
+    wide: true,
+    onOpen(d) {
+      d.addEventListener("close", () => reload(), { once: true });
+      $("#rs-copy") && ($("#rs-copy").onclick = async () => { const c = await copyText(linesFor(ok.map((x) => ({ ...x })))); toast(c ? "Αντιγράφηκαν." : "Η αντιγραφή δεν επετράπη από τον browser.", !c); });
+    },
+  });
+}
+
+function windowDialog(rows, reload) {
+  if (!rows.length) return;
+  const one = rows.length === 1 ? rows[0] : null;
+  openDialog(`<div class="dlg-head"><div><div class="eyebrow">${one ? h(one.employee_name) : `${rows.length} αναθέσεις`}</div><h2>Διαθεσιμότητα / παράταση</h2></div><button class="icon-btn" data-close>✕</button></div>
+    <p class="muted small">Ώρα Ελλάδας. Η αλλαγή καταγράφεται στο ιστορικό κάθε ανάθεσης. Ο σύνδεσμος δεν αλλάζει.</p>
+    <div class="grid g2"><div><label>Έναρξη</label><input type="datetime-local" id="lw-s" value="${athensInput(one ? one.starts_at : rows[0].starts_at)}"></div>
+      <div><label>Λήξη</label><input type="datetime-local" id="lw-e" value="${athensInput(one ? one.ends_at : rows[0].ends_at)}"></div></div>
+    <label>Σημείωση (π.χ. «παράταση λόγω αργίας»)</label><input id="lw-n" maxlength="300">
+    <p id="lw-m" class="form-msg"></p>
+    <div class="dlg-foot"><button class="btn" data-close>Άκυρο</button><button class="btn primary" id="lw-ok">Αποθήκευση</button></div>`, {
+    onOpen() {
+      $("#lw-ok").onclick = async () => {
+        try { const r = await S.api.linkSetWindow(rows.map((x) => x.id), $("#lw-s").value, $("#lw-e").value, $("#lw-n").value); closeDialog(); toast(r.changed ? `Η διαθεσιμότητα άλλαξε (${r.changed}) και καταγράφηκε.` : "Καμία αλλαγή."); reload(); }
+        catch (e) { $("#lw-m").textContent = e.message; }
+      };
+    },
+  });
+}
+
+const EVENT_GR = { created: "Δημιουργία", reissued: "Επανέκδοση συνδέσμου", cancelled: "Ακύρωση συνδέσμου", window_changed: "Αλλαγή διαθεσιμότητας", opened: "Πρώτο άνοιγμα", submitted: "Οριστική υποβολή" };
+async function historyDialog(l) {
+  const ev = await S.api.linkHistory(l.id);
+  const det = (e) => {
+    const d = e.detail || {};
+    if (e.action === "created") return `${athens(d.starts_at)} → ${athens(d.ends_at)} · έκδοση ${d.version}${d.round > 1 ? ` · ${d.round}ος γύρος` : ""}${d.continued_attempt ? " · συνέχεια συμπλήρωσης που είχε ξεκινήσει" : ""}`;
+    if (e.action === "window_changed") return `${athens(d.old_starts)} → ${athens(d.old_ends)}<br><strong>${athens(d.new_starts)} → ${athens(d.new_ends)}</strong>${d.note ? ` · ${h(d.note)}` : ""}`;
+    if (e.action === "cancelled") return d.note ? h(d.note) : "";
+    if (e.action === "reissued") return `σύνδεσμος #${d.link_no}`;
+    return d.link_no ? `σύνδεσμος #${d.link_no}` : "";
+  };
+  openDialog(`<div class="dlg-head"><div><div class="eyebrow">${h(l.employee_name)} · ${h(l.store)}</div><h2>Ιστορικό ανάθεσης</h2></div><button class="icon-btn" data-close>✕</button></div>
+    ${ev.map((e) => `<div class="list-item small"><div class="grow"><strong>${EVENT_GR[e.action] || h(e.action)}</strong> <span class="muted">${athens(e.at)}</span><div>${det(e)}</div><div class="muted">${h(String(e.actor).startsWith("employee:") ? "ο εργαζόμενος (μέσω συνδέσμου)" : e.actor)}</div></div></div>`).join("")}
+    <div class="dlg-foot"><button class="btn" data-close>Κλείσιμο</button></div>`);
 }

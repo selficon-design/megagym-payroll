@@ -238,7 +238,7 @@ function hrApi(sb, all, rpc) {
     qClose: (id) => rpc("q_close", { p_id: id }),
     attempts({ questionnaire, employee } = {}) {
       return all(() => {
-        let q = sb.from("assessment_attempts").select("id,questionnaire_id,version_id,employee_code,employee_name,store,specialty,company,opened_by,opened_role,started_at,last_saved_at,submitted_at,status,score,max_score").order("started_at", { ascending: false });
+        let q = sb.from("assessment_attempts").select("id,questionnaire_id,version_id,employee_code,employee_name,store,specialty,company,opened_by,opened_role,started_at,last_saved_at,submitted_at,status,score,max_score,assignment_id,due_at").order("started_at", { ascending: false });
         if (questionnaire) q = q.eq("questionnaire_id", questionnaire); if (employee) q = q.eq("employee_code", employee);
         return q;
       });
@@ -248,6 +248,17 @@ function hrApi(sb, all, rpc) {
     assessmentsOpen: () => rpc("assessments_open"),
     assessmentTargets: (qid) => rpc("assessment_targets", { p_qid: qid }),
     employeeAssessments: (code) => rpc("employee_assessments", { p_code: code }),
+
+    // Προσωπικοί σύνδεσμοι αξιολόγησης (διαχείριση: μόνο ΓΔ· ο server ελέγχει τον ρόλο)
+    linkList: (qid) => rpc("assessment_links", { p_qid: qid }),
+    linkCreate: (qid, codes, s, e, reassess) => rpc("link_create", { p_qid: qid, p_codes: codes, p_starts: s, p_ends: e, p_reassess: !!reassess }),
+    linkReissue: (id) => rpc("link_reissue", { p_id: id }),
+    linkCancel: (id, note) => rpc("link_cancel", { p_id: id, p_note: note || null }),
+    linkSetWindow: (ids, s, e, note) => rpc("link_set_window", { p_ids: ids, p_starts: s, p_ends: e, p_note: note || null }),
+    linkHistory: (id) => rpc("link_history", { p_id: id }),
+    linkAssignments({ employee } = {}) {
+      return all(() => { let q = sb.from("assessment_assignments").select("id,questionnaire_id,version_id,employee_code,employee_name,store,specialty,starts_at,ends_at,status,link_no,round,created_by,created_at,completed_at,cancelled_at").order("created_at", { ascending: false }); if (employee) q = q.eq("employee_code", employee); return q; });
+    },
   };
 }
 

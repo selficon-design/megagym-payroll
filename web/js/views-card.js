@@ -128,20 +128,24 @@ async function stats(e, body, params) {
 
 async function assess(e, body) {
   if (can.assessResults()) {
-    const [atts, qs, vers] = await Promise.all([S.api.attempts({ employee: e.code }), S.api.questionnaires(), S.api.versionsAll()]);
+    const [atts, qs, vers, asg] = await Promise.all([S.api.attempts({ employee: e.code }), S.api.questionnaires(), S.api.versionsAll(), S.api.linkAssignments({ employee: e.code })]);
     const qT = Object.fromEntries(qs.map((q) => [q.id, q])), vN = Object.fromEntries(vers.map((v) => [v.id, v.version]));
-    const state = (a) => (a.status === "in_progress" && qT[a.questionnaire_id]?.ends_at && new Date(qT[a.questionnaire_id].ends_at) < new Date() ? "expired" : a.status);
+    const state = (a) => { const end = a.due_at || qT[a.questionnaire_id]?.ends_at; return a.status === "in_progress" && end && new Date(end) < new Date() ? "expired" : a.status; };
+    // Προσωπικοί σύνδεσμοι που δεν έχουν ανοιχτεί ακόμη
+    const opened = new Set(atts.map((a) => a.assignment_id).filter(Boolean));
+    const waiting = asg.filter((g) => g.status === "active" && !g.completed_at && !opened.has(g.id));
     body.innerHTML = `<div class="card">${atts.length ? `<div class="table-wrap"><table class="stack"><thead><tr><th>Ερωτηματολόγιο</th><th>Κατά τη συμπλήρωση</th><th>Άνοιξε</th><th>Υποβολή</th><th>Κατάσταση</th><th class="r">Αποτέλεσμα</th></tr></thead><tbody>
       ${atts.map((a) => `<tr class="click" data-att="${h(a.id)}"><td><strong>${h(qT[a.questionnaire_id]?.title)}</strong><span class="sub">έκδοση ${vN[a.version_id]}</span></td>
-        <td class="small">${h(a.store)} · ${h(a.specialty || "—")}</td><td class="small">${h(a.opened_by)}</td><td class="small">${a.submitted_at ? athens(a.submitted_at) : "—"}</td>
+        <td class="small">${h(a.store)} · ${h(a.specialty || "—")}</td><td class="small">${a.opened_role === "link" ? "Προσωπικός σύνδεσμος" : h(a.opened_by)}</td><td class="small">${a.submitted_at ? athens(a.submitted_at) : "—"}</td>
         <td>${attemptBadge(state(a))}</td><td class="r num">${a.score !== null && a.max_score ? `${String(a.score).replace(".", ",")} / ${String(a.max_score).replace(".", ",")}` : "—"}</td></tr>`).join("")}</tbody></table></div>`
-      : `<div class="empty">Δεν υπάρχουν αξιολογήσεις.</div>`}
+      : waiting.length ? "" : `<div class="empty">Δεν υπάρχουν αξιολογήσεις.</div>`}
+      ${waiting.length ? `<h4 style="margin-top:14px">Ανατεθειμένες μέσω προσωπικού συνδέσμου — δεν έχουν ανοιχτεί</h4>${waiting.map((g) => `<div class="list-item small"><div class="grow"><strong>${h(qT[g.questionnaire_id]?.title)}</strong> <span class="muted">έκδοση ${vN[g.version_id]}</span><div class="muted">Διαθέσιμη ${athens(g.starts_at)} → ${athens(g.ends_at)}</div></div>${attemptBadge(new Date(g.ends_at) < new Date() ? "expired" : "not_started")}</div>`).join("")}` : ""}
       <p class="muted small" style="margin-top:10px">Οι βαθμοί συγκρίνονται μόνο στην ίδια έκδοση ερωτηματολογίου. Δεν συνδυάζονται με στατιστικά πωλήσεων.</p></div>`;
     $$("[data-att]", body).forEach((tr) => (tr.onclick = () => attemptDialog(tr.dataset.att)));
   } else {
     const list = await S.api.employeeAssessments(e.code);
     body.innerHTML = `<div class="card">${list.length ? list.map((a) => `<div class="list-item"><div class="grow"><strong>${h(a.title)}</strong> <span class="muted small">έκδοση ${a.version}</span>
-      <div class="muted small">${a.submitted_at ? "Υποβλήθηκε " + athens(a.submitted_at) : "Ξεκίνησε " + athens(a.started_at)} · προθεσμία ${athens(a.ends_at)}</div></div>${attemptBadge(a.state)}</div>`).join("")
+      <div class="muted small">${a.submitted_at ? "Υποβλήθηκε " + athens(a.submitted_at) : a.started_at ? "Ξεκίνησε " + athens(a.started_at) : "Δεν έχει ανοιχτεί"} · προθεσμία ${athens(a.ends_at)}</div></div>${attemptBadge(a.state)}</div>`).join("")
       : `<div class="empty">Δεν υπάρχουν αξιολογήσεις.</div>`}
       <p class="muted small" style="margin-top:10px">Απαντήσεις και βαθμολογίες βλέπουν μόνο η Γενική Διευθύντρια και το HR.</p>
       <a class="btn primary" style="margin-top:12px" href="#/assess-run">Έναρξη αξιολόγησης</a></div>`;
