@@ -16,7 +16,7 @@ FAKE = r"""
   window.webkitSpeechRecognition = FakeRec; window.SpeechRecognition = FakeRec;
   const voices = [{ name: "Microsoft Athina Online (Natural) - Greek (Greece)", lang: "el-GR", voiceURI: "athina" }, { name: "Google Ελληνικά", lang: "el-GR", voiceURI: "g-el" }, { name: "English", lang: "en-US", voiceURI: "en" }];
   const synth = { speaking: false, pending: false, getVoices: () => voices, addEventListener() {}, cancel() { this.speaking = false; window.__cancelled = (window.__cancelled || 0) + 1; },
-    speak(u) { this.speaking = true; window.__spoken.push({ text: u.text, voice: u.voice && u.voice.voiceURI, lang: u.lang, rate: u.rate }); setTimeout(() => { this.speaking = false; u.onend && u.onend(); }, 50); } };
+    speak(u) { if (!u.text.trim()) { setTimeout(() => u.onend && u.onend(), 5); return; } this.speaking = true; window.__spoken.push({ text: u.text, voice: u.voice && u.voice.voiceURI, lang: u.lang, rate: u.rate }); setTimeout(() => { this.speaking = false; u.onend && u.onend(); }, 50); } };
   Object.defineProperty(window, "speechSynthesis", { value: synth });
   window.SpeechSynthesisUtterance = function (t) { this.text = t; };
 })();
@@ -93,6 +93,17 @@ with sync_playwright() as p:
     pg.evaluate("window.__cancelled = 0")
     go(pg, "#/employees")
     check(pg.evaluate("window.__cancelled") > 0, "αλλαγή σελίδας: σταματά ανάγνωση/μικρόφωνο")
+
+    # Browser που «καταπίνει» την ανάγνωση με τη συγκεκριμένη φωνή (π.χ. Mac): 2η προσπάθεια με την προεπιλεγμένη
+    SWALLOW = FAKE.replace("return; } this.speaking = true;", "return; } if (u.voice && window.__swallow) { window.__swallowed = (window.__swallowed||0)+1; return; } if (window.__mute) return; this.speaking = true; u.onstart && u.onstart();")
+    p3 = new_page(b); p3.context.add_init_script(SWALLOW); p3.route("**/functions/v1/ask", ask); login(p3, "owner@test.gr"); go(p3, "#/assistant")
+    p3.evaluate("window.__swallow = true; window.__nextSpeech = 'Ποιοι δεν έχουν υπογράψει'")
+    p3.click("#ai-mic"); p3.wait_for_function("window.__spoken.length > 0", timeout=15000)
+    check(p3.evaluate("window.__swallowed") == 1 and p3.evaluate("window.__spoken[0].voice") is None, "φωνή που δεν παίζει: αυτόματα 2η προσπάθεια με την προεπιλεγμένη φωνή")
+    p3.evaluate("window.__mute = true; window.__spoken = []")
+    p3.locator(".msg.bot .say").last.click(); p3.wait_for_selector("#ai-vstat.bad", timeout=15000)
+    check("δεν έπαιξε ήχο" in p3.inner_text("#ai-vstat") and p3.get_attribute("#ai-mic", "data-state") == "idle", "καθόλου ήχος: καθαρό μήνυμα αντί για ατελείωτο «Διαβάζω»")
+    no_js_errors(p3, "ανάγνωση με εφεδρεία")
 
     # Χωρίς υποστήριξη αναγνώρισης (π.χ. Firefox)
     p2 = new_page(b); p2.context.add_init_script("delete window.webkitSpeechRecognition; delete window.SpeechRecognition;")

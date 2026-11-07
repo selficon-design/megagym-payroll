@@ -101,26 +101,68 @@ function chunks(text) {
   return out;
 }
 let speakId = 0;
-/** Διαβάζει κείμενο. Επιστρέφει Promise που ολοκληρώνεται στο τέλος (ή όταν διακοπεί). */
-export function speak(text, { onStart, onEnd } = {}) {
-  if (!canSpeak) { onEnd?.(); return Promise.resolve(); }
-  stopSpeaking();
-  const id = ++speakId, parts = chunks(toSpeech(text)), v = pickVoice(), rate = Number(prefs().rate) || 1;
+const keep = new Set();          // κρατά ζωντανές τις εκφωνήσεις (ο Chrome «χάνει» όσες καθαρίζει η μνήμη)
+let unlocked = false;
+/**
+ * Ξεκλείδωμα ήχου: καλείται ΜΕΣΑ στο πάτημα κουμπιού. Safari/Chrome σε Mac δεν παίζουν ανάγνωση που ξεκινά
+ * αργότερα (π.χ. όταν έρθει η απάντηση) αν δεν έχει προηγηθεί ανάγνωση από πάτημα του χρήστη.
+ */
+export function unlock() {
+  if (!canSpeak) return;
+  try { synth.resume(); } catch {}
+  if (unlocked) return;
+  unlocked = true;
+  try { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; u.lang = "el-GR"; keep.add(u); u.onend = u.onerror = () => keep.delete(u); synth.speak(u); } catch {}
+}
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Μία εκφώνηση· επιστρέφει "ok" | "stopped" | "silent" (δεν ξεκίνησε καθόλου) | "error" */
+function utter(text, v, rate, id) {
   return new Promise((resolve) => {
-    const done = () => { if (id === speakId) onEnd?.(); resolve(); };
-    if (!parts.length) return done();
-    onStart?.();
-    let i = 0;
-    const next = () => {
-      if (id !== speakId) return resolve();
-      if (i >= parts.length) return done();
-      const u = new SpeechSynthesisUtterance(parts[i++]);
-      u.lang = v?.lang || "el-GR"; if (v) u.voice = v; u.rate = rate; u.pitch = 1;
-      u.onend = next; u.onerror = (e) => (e.error === "interrupted" || e.error === "canceled" ? resolve() : next());
-      synth.speak(u);
-    };
-    next();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = v?.lang || "el-GR"; if (v) u.voice = v; u.rate = rate; u.pitch = 1; u.volume = 1;
+    let started = false, settled = false;
+    const fin = (r) => { if (settled) return; settled = true; clearTimeout(guard); keep.delete(u); resolve(r); };
+    u.onstart = () => { started = true; };
+    u.onend = () => fin(id === speakId ? "ok" : "stopped");
+    u.onerror = (e) => fin(e.error === "interrupted" || e.error === "canceled" ? "stopped" : started ? "error" : "silent");
+    // Αν σε 4″ δεν έχει ξεκινήσει ούτε μιλάει, ο browser την «κατάπιε»
+    const guard = setTimeout(() => { if (!started && !synth.speaking) { try { synth.cancel(); } catch {} fin("silent"); } }, 4000);
+    keep.add(u);
+    try { synth.resume(); } catch {}
+    synth.speak(u);
   });
 }
-export function stopSpeaking() { speakId++; if (canSpeak) synth.cancel(); }
+
+/**
+ * Διαβάζει κείμενο. Επιστρέφει Promise που ολοκληρώνεται στο τέλος (ή όταν διακοπεί).
+ * onError(μήνυμα): όταν ο browser δεν παίζει καθόλου ήχο.
+ */
+export function speak(text, { onStart, onEnd, onError } = {}) {
+  if (!canSpeak) { onError?.("Αυτός ο browser δεν διαβάζει κείμενο φωναχτά."); onEnd?.(); return Promise.resolve(); }
+  const busy = synth.speaking || synth.pending;
+  stopSpeaking();
+  const id = ++speakId, parts = chunks(toSpeech(text)), rate = Number(prefs().rate) || 1;
+  let v = pickVoice();
+  return (async () => {
+    if (!parts.length) { onEnd?.(); return; }
+    if (busy) await wait(150);                      // ο Chrome χάνει ανάγνωση που ξεκινά αμέσως μετά από διακοπή
+    if (id !== speakId) return;
+    onStart?.();
+    for (let i = 0; i < parts.length; i++) {
+      let r = await utter(parts[i], v, rate, id);
+      if (r === "silent" && id === speakId) {         // 2η προσπάθεια με την προεπιλεγμένη φωνή του συστήματος
+        v = null; await wait(150);
+        r = await utter(parts[i], null, rate, id);
+        if (r === "silent") {
+          if (id === speakId) { onError?.("Ο browser δεν έπαιξε ήχο. Ελέγξτε την ένταση του υπολογιστή και ότι η καρτέλα δεν είναι σε σίγαση· αν συνεχίζει, πατήστε «⚙ Φωνή» → «▶ Δοκιμή»."); onEnd?.(); }
+          return;
+        }
+      }
+      if (r === "stopped" || id !== speakId) return;
+    }
+    if (id === speakId) onEnd?.();
+  })();
+}
+export function stopSpeaking() { speakId++; if (canSpeak) { try { synth.cancel(); } catch {} } }
 export const isSpeaking = () => canSpeak && (synth.speaking || synth.pending);

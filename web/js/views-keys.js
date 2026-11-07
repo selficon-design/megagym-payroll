@@ -176,6 +176,7 @@ export async function keysTab(q, body, reload) {
     try { const r = await S.api.keyPoints(latest.id, Number($("#ky-pts").value.replace(",", "."))); toast(`Ορίστηκαν βαθμοί σε ${r.updated} ερωτήσεις.`); re(); } catch (e) { toast(e.message, true); }
   });
   $("#ky-voice").onclick = () => {
+    voice.unlock();
     const items = keyable.filter((x) => (!F.spec || (x.specialty || "Όλες οι ειδικότητες") === F.spec) && (F.show === "all" ? true : F.show === "estimate" ? x.key_status === "estimate" : !hasKey(x)));
     if (!items.length) return toast("Δεν υπάρχουν ερωτήσεις για συμπλήρωση με αυτό το φίλτρο. Επιλέξτε «Όλες» για να τις ξαναπείτε.", true);
     runVoice({
@@ -258,6 +259,7 @@ export async function examplesTab(q, body, reload) {
     $(".ex-del", el) && ($(".ex-del", el).onclick = async () => { try { await S.api.exDelete($(".ex-del", el).dataset.id); re(); } catch (e) { toast(e.message, true); } });
   });
   $("#ex-voice").onclick = () => {
+    voice.unlock();
     const items = rows.filter((r) => (!F.q || r.question_id === F.q) && (F.show === "all" || (F.show === "done" ? r.example_id : !r.example_id)));
     if (!items.length) return toast("Δεν υπάρχουν απαντήσεις με αυτά τα φίλτρα.", true);
     runVoice({

@@ -34,7 +34,7 @@ FAKE = r"""(() => {
     stop() {} abort() { this.onerror && this.onerror({ error: "aborted" }); this.onend && this.onend(); } }
   window.webkitSpeechRecognition = R; window.SpeechRecognition = R;
   const synth = { speaking: false, pending: false, getVoices: () => [{ name: "Greek", lang: "el-GR", voiceURI: "el" }], addEventListener() {}, cancel() {},
-    speak(u) { window.__spoken.push(u.text); setTimeout(() => u.onend && u.onend(), 20); } };
+    speak(u) { if (!u.text.trim()) { setTimeout(() => u.onend && u.onend(), 5); return; } window.__spoken.push(u.text); setTimeout(() => u.onend && u.onend(), 20); } };
   Object.defineProperty(window, "speechSynthesis", { value: synth }); window.SpeechSynthesisUtterance = function (t) { this.text = t; };
 })();"""
 
