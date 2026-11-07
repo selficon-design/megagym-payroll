@@ -68,14 +68,26 @@ with sync_playwright() as p:
     pg.reload(); pg.wait_for_selector("#ai-mic"); pg.click("#ai-vset")
     check(pg.input_value("#vs-voice") == "g-el", "οι ρυθμίσεις φωνής θυμούνται")
 
-    # Συνεχής συνομιλία
-    pg.check("#vs-hands")
+    # Χειροκίνητα: μία ερώτηση ανά πάτημα
+    pg.click("#ai-vset")
+    check(pg.is_visible('.seg [data-mode="manual"].on'), "προεπιλογή: «Χειροκίνητα»")
     pg.evaluate("window.__nextSpeech = 'Ποιοι δεν έχουν υπογράψει αυτόν τον μήνα'; window.__recStarts = 0")
-    pg.click("#ai-mic"); pg.wait_for_function("window.__recStarts >= 2", timeout=8000)
-    check(True, "συνεχής συνομιλία: μετά την ανάγνωση ακούει ξανά")
-    pg.evaluate("window.__nextSpeech = ''"); pg.wait_for_selector("#ai-vstat.warn", timeout=5000)
-    check("Δεν ακούστηκε" in pg.inner_text("#ai-vstat"), "σιωπή: ήπιο μήνυμα, χωρίς αποστολή")
-    pg.uncheck("#vs-hands")
+    pg.click("#ai-mic"); pg.wait_for_timeout(2500)
+    check(pg.evaluate("window.__recStarts") == 1, "χειροκίνητα: μετά την απάντηση ΔΕΝ ξανακούει μόνο του")
+    # Αυτόματα: πατάτε μία φορά, η συνομιλία συνεχίζει
+    pg.click('.seg [data-mode="auto"]')
+    check("μία φορά" in pg.inner_text("#mode-hint"), "«Αυτόματα»: εξήγηση δίπλα στον επιλογέα")
+    n0 = len(asked); pg.evaluate("window.__recStarts = 0")
+    pg.click("#ai-mic"); pg.wait_for_function("window.__recStarts >= 3", timeout=10000)
+    check(len(asked) - n0 >= 2 and pg.is_visible("#conv-end"), "αυτόματα: μιλάτε → απαντά → ξανακούει, χωρίς πάτημα")
+    pg.evaluate("window.__nextSpeech = 'τέλος'"); pg.wait_for_function("!document.querySelector('#conv-end') || document.querySelector('#conv-end').hidden", timeout=8000)
+    n1 = pg.evaluate("window.__recStarts"); pg.wait_for_timeout(1500)
+    check(pg.evaluate("window.__recStarts") == n1, "η φράση «τέλος» σταματά την αυτόματη συνομιλία")
+    pg.evaluate("window.__nextSpeech = ''"); pg.click("#ai-mic"); pg.wait_for_selector("#ai-vstat.warn", timeout=8000)
+    check("δεν ακούστηκε" in pg.inner_text("#ai-vstat").lower() and pg.evaluate("window.__recStarts") - n1 == 3, "σιωπή: ακούει λίγο ακόμη και μετά σταματά ήπια")
+    pg.reload(); pg.wait_for_selector("#ai-mic")
+    check(pg.is_visible('.seg [data-mode="auto"].on'), "ο τρόπος (αυτόματα/χειροκίνητα) θυμάται")
+    pg.click('.seg [data-mode="manual"]')
 
     # Σταμάτημα ανάγνωσης και αλλαγή σελίδας
     pg.evaluate("window.__cancelled = 0")

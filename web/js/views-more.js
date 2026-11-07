@@ -154,7 +154,6 @@ export async function assistant() {
     <div class="row-actions"><button class="btn" id="ai-vset" aria-expanded="false">⚙ Φωνή</button><button class="btn" id="ai-clear">Νέα συζήτηση</button></div></div>
   <div class="card voice-set" id="ai-vpanel" hidden>
     <label class="check"><input type="checkbox" id="vs-speak" ${P.speak ? "checked" : ""}> Διάβαζε τις απαντήσεις φωναχτά</label>
-    <label class="check"><input type="checkbox" id="vs-hands" ${P.hands ? "checked" : ""}> Συνεχής συνομιλία (μετά την απάντηση ακούει ξανά)</label>
     <div class="vs-row"><label for="vs-voice">Φωνή</label><select id="vs-voice"></select>
       <label for="vs-rate">Ταχύτητα</label><input type="range" id="vs-rate" min="0.7" max="1.4" step="0.05" value="${P.rate}"><span id="vs-rate-v" class="muted small"></span>
       <button class="btn sm" id="vs-test">▶ Δοκιμή</button></div>
@@ -162,6 +161,11 @@ export async function assistant() {
   </div>
   <div class="card chat"><div class="chat-log" id="ai-log"></div>
     <div class="suggest" id="ai-sugg">${sugg.map((s) => `<button class="chip">${h(s)}</button>`).join("")}</div>
+    <div class="mode-row"><span class="small"><strong>Φωνή:</strong></span>
+      <div class="seg" role="radiogroup" aria-label="Τρόπος φωνητικής συνομιλίας">
+        <button type="button" role="radio" data-mode="manual">Χειροκίνητα</button><button type="button" role="radio" data-mode="auto">Αυτόματα</button></div>
+      <span id="mode-hint" class="muted small"></span>
+      <button type="button" class="btn sm danger" id="conv-end" hidden>■ Τέλος συνομιλίας</button></div>
     <div class="voice-status" id="ai-vstat" hidden></div>
     <form class="chat-form" id="ai-form">
       <button type="button" class="mic-btn" id="ai-mic" title="Πατήστε και μιλήστε" aria-label="Φωνητική ερώτηση">🎤</button>
@@ -197,26 +201,60 @@ export async function assistant() {
     } catch (e) { S.chat.push({ role: "assistant", content: e.message, err: true }); }
     if (!here()) return;
     draw();
-    if (answer && spoken && voice.prefs().speak && voice.canSpeak) say(answer, () => { if (voice.prefs().hands && here()) startListening(); });
+    const next = () => { if (conv && here()) startListening(); };
+    if (spoken && voice.prefs().speak && voice.canSpeak) say(answer || S.chat[S.chat.length - 1].content, next);
+    else next();
   };
 
-  let stopRec = () => {};
+  // Τρόπος: «Χειροκίνητα» = πατάτε 🎤 για κάθε ερώτηση · «Αυτόματα» = πατάτε μία φορά και η συνομιλία συνεχίζει μόνη της
+  let auto = !!voice.prefs().hands, conv = false, quiet = 0, stopRec = () => {};
+  const drawMode = () => {
+    $$(".seg [data-mode]").forEach((b) => { const on = (b.dataset.mode === "auto") === auto; b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); });
+    $("#mode-hint").textContent = auto ? "Πατάτε 🎤 μία φορά: μιλάτε, απαντά, και ξανακούει μόνο του. Πείτε «τέλος» για να σταματήσει."
+      : "Πατάτε 🎤 για κάθε ερώτηση· η απάντηση διαβάζεται μόνη της.";
+    $("#conv-end").hidden = !conv;
+  };
+  const endConv = (msg = "", kind = "") => {
+    conv = false; quiet = 0; stopRec = () => {};
+    voice.stopListening(); setMic(voice.isSpeaking() ? "speaking" : "idle"); status(msg, kind); drawMode();
+  };
+  const ENDS = /^(τελος|σταματα|στοπ|αντιο|φτανει|τελος συζητησης|τελος συνομιλιας|ευχαριστω τελος|ευχαριστω πολυ τελος)(\s|$)/;
   const startListening = () => {
-    if (!voice.canListen) return status("Η φωνητική εντολή λειτουργεί σε Google Chrome ή Microsoft Edge. Σε αυτόν τον browser γράψτε την ερώτηση.", "bad");
-    setMic("listening"); status(`<span class="rec-dot"></span> Ακούω… μιλήστε τώρα. Πατήστε ■ όταν τελειώσετε.`, "on");
+    if (!voice.canListen) return endConv("Η φωνητική εντολή λειτουργεί σε Google Chrome ή Microsoft Edge. Σε αυτόν τον browser γράψτε την ερώτηση.", "bad");
+    setMic("listening");
+    status(conv ? `<span class="rec-dot"></span> Αυτόματη συνομιλία — ακούω… (πείτε «τέλος» για να σταματήσει)` : `<span class="rec-dot"></span> Ακούω… μιλήστε τώρα. Πατήστε ■ όταν τελειώσετε.`, "on");
     $("#ai-in").value = "";
     stopRec = voice.listen({
       onText: (t) => { $("#ai-in").value = t; },
-      onEnd: (t) => { setMic("idle"); status(""); if (t) send(t, { spoken: true }); else status("Δεν ακούστηκε κάτι. Πατήστε ξανά το μικρόφωνο και μιλήστε.", "warn"); },
-      onError: (m) => { setMic("idle"); status(h(m), "bad"); },
+      onEnd: (t) => {
+        setMic("idle"); status("");
+        if (t) {
+          quiet = 0;
+          const p = norm(t).replace(/[.,;!·]/g, "").trim();
+          if (conv && p.split(/\s+/).length <= 4 && ENDS.test(p)) { $("#ai-in").value = ""; endConv(); voice.speak("Εντάξει. Όποτε με χρειαστείτε, πατήστε το μικρόφωνο."); return; }
+          return send(t, { spoken: true });
+        }
+        if (conv && quiet < 2) { quiet++; return startListening(); }   // λίγη σιωπή: συνεχίζει να ακούει
+        if (conv) return endConv("Η αυτόματη συνομιλία σταμάτησε επειδή δεν ακούστηκε κάτι. Πατήστε 🎤 για να συνεχίσετε.", "warn");
+        status("Δεν ακούστηκε κάτι. Πατήστε ξανά το μικρόφωνο και μιλήστε.", "warn");
+      },
+      onError: (m) => { setMic("idle"); endConv(h(m), "bad"); },
     });
   };
   mic.onclick = () => {
     const st = mic.dataset.state;
-    if (st === "listening") return stopRec();                // τέλος ομιλίας → η φράση στέλνεται
-    if (st === "speaking") { voice.stopSpeaking(); setMic("idle"); status(""); return; }
+    if (st === "listening") return stopRec();                // τέλος ομιλίας → η φράση στέλνεται τώρα
+    if (st === "speaking") { voice.stopSpeaking(); if (conv) return startListening(); setMic("idle"); status(""); return; }   // στο αυτόματο: διακοπή και ακούει
+    if (auto) { conv = true; quiet = 0; drawMode(); }
     startListening();
   };
+  $$(".seg [data-mode]").forEach((b) => (b.onclick = () => {
+    auto = b.dataset.mode === "auto"; voice.setPrefs({ hands: auto });
+    if (!auto && conv) endConv("Χειροκίνητος τρόπος: πατήστε 🎤 για κάθε ερώτηση.");
+    drawMode();
+  }));
+  $("#conv-end").onclick = () => { voice.stopSpeaking(); endConv("Η αυτόματη συνομιλία σταμάτησε."); };
+  drawMode();
   setMic("idle");
   if (!voice.canListen) { mic.disabled = true; mic.title = "Η φωνητική εντολή λειτουργεί σε Google Chrome ή Microsoft Edge"; }
 
@@ -233,7 +271,6 @@ export async function assistant() {
   const rateLbl = () => ($("#vs-rate-v").textContent = `×${Number($("#vs-rate").value).toFixed(2).replace(".", ",")}`);
   rateLbl();
   $("#vs-speak").onchange = (e) => { voice.setPrefs({ speak: e.target.checked }); if (!e.target.checked) voice.stopSpeaking(); };
-  $("#vs-hands").onchange = (e) => voice.setPrefs({ hands: e.target.checked });
   $("#vs-voice").onchange = (e) => voice.setPrefs({ voice: e.target.value });
   $("#vs-rate").oninput = (e) => { voice.setPrefs({ rate: Number(e.target.value) }); rateLbl(); };
   $("#vs-test").onclick = () => say(`Γεια σας, ${S.me.name.split(" ")[0]}. Είμαι ο Βοηθός της MEGA GYM. Ρωτήστε με, για παράδειγμα, ποιοι δεν έχουν υπογράψει αυτόν τον μήνα.`);
@@ -242,10 +279,10 @@ export async function assistant() {
   $("#ai-form").onsubmit = (e) => { e.preventDefault(); send($("#ai-in").value); };
   $("#ai-in").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(e.target.value); } };
   $$("#ai-sugg .chip").forEach((b) => (b.onclick = () => send(b.textContent)));
-  $("#ai-clear").onclick = () => { voice.stopSpeaking(); voice.stopListening(); S.chat = []; assistant(); };
+  $("#ai-clear").onclick = () => { voice.stopSpeaking(); voice.stopListening(); conv = false; S.chat = []; assistant(); };
   $("#ai-sugg").hidden = S.chat.length > 0;
   // Από το πλωτό κουμπί μικροφώνου: ξεκίνα αμέσως να ακούς
-  if (S.voiceStart) { S.voiceStart = false; startListening(); }
+  if (S.voiceStart) { S.voiceStart = false; if (auto) { conv = true; drawMode(); } startListening(); }
 }
 
 // ═══════════════════════ Ιστορικό ενεργειών ═══════════════════════

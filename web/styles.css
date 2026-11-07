@@ -371,3 +371,9 @@ table.entry td:first-child{min-width:170px}
 .ex-rate .ex-s{width:90px}
 .ev-score{font-size:20px;font-weight:800}
 @media (max-width:760px){.ex-row{grid-template-columns:1fr}}
+/* Επιλογέας Χειροκίνητα / Αυτόματα */
+.mode-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line);background:#fafbfc}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:#fff}
+.seg button{border:0;background:transparent;padding:7px 16px;border-radius:999px;font-weight:600;cursor:pointer;color:var(--ink-2);font:inherit;font-size:14px}
+.seg button.on{background:var(--ink);color:#fff}
+.mode-row #mode-hint{flex:1;min-width:200px}
