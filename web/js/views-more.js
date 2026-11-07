@@ -278,7 +278,20 @@ export async function assistant() {
   $("#vs-speak").onchange = (e) => { voice.setPrefs({ speak: e.target.checked }); if (!e.target.checked) voice.stopSpeaking(); };
   $("#vs-voice").onchange = (e) => voice.setPrefs({ voice: e.target.value });
   $("#vs-rate").oninput = (e) => { voice.setPrefs({ rate: Number(e.target.value) }); rateLbl(); };
-  $("#vs-test").onclick = () => voice.unlock() || say(`Γεια σας, ${S.me.name.split(" ")[0]}. Είμαι ο Βοηθός της MEGA GYM. Ρωτήστε με, για παράδειγμα, ποιοι δεν έχουν υπογράψει αυτόν τον μήνα.`);
+  $("#vs-test").onclick = () => {
+    voice.unlock();
+    const d = voice.diag(), note = $("#vs-note");
+    const where = d.device === "iphone" ? "Στο iPhone/iPad: βγάλτε τον διακόπτη αθόρυβου (στο πλάι) και ανεβάστε την ένταση με τα κουμπιά — το αθόρυβο κόβει αυτή τη φωνή."
+      : d.device === "android" ? "Στο κινητό: ανεβάστε την ένταση πολυμέσων (όχι κλήσης)."
+      : "Ελέγξτε την ένταση του υπολογιστή, την έξοδο ήχου (ηχεία/ακουστικά) και ότι η καρτέλα δεν είναι σε σίγαση (δεξί κλικ στην καρτέλα).";
+    note.innerHTML = "⏳ Δοκιμή ανάγνωσης…";
+    let ok = false;
+    voice.speak(`Γεια σας, ${S.me.name.split(" ")[0]}. Είμαι ο Βοηθός της MEGA GYM. Με ακούτε καθαρά;`, {
+      onStart: (v) => { ok = true; note.innerHTML = `✓ Ο browser <strong>διαβάζει</strong> τώρα (${h(d.browser)}, φωνή: ${h(v?.name || "προεπιλογή συστήματος")}). <strong>Αν δεν ακούτε τίποτα</strong>, ο ήχος κόβεται από τη συσκευή: ${h(where)}`; },
+      onError: (m) => { note.innerHTML = `✗ ${h(m)} <br>(${h(d.browser)}, ελληνικές φωνές: ${d.voices}). ${h(where)}`; },
+      onEnd: () => { if (ok) note.innerHTML += " <br>Η δοκιμή ολοκληρώθηκε."; },
+    });
+  };
 
   draw();
   $("#ai-form").onsubmit = (e) => { e.preventDefault(); voice.unlock(); send($("#ai-in").value); };

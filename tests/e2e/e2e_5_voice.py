@@ -16,7 +16,7 @@ FAKE = r"""
   window.webkitSpeechRecognition = FakeRec; window.SpeechRecognition = FakeRec;
   const voices = [{ name: "Microsoft Athina Online (Natural) - Greek (Greece)", lang: "el-GR", voiceURI: "athina" }, { name: "Google Ελληνικά", lang: "el-GR", voiceURI: "g-el" }, { name: "English", lang: "en-US", voiceURI: "en" }];
   const synth = { speaking: false, pending: false, getVoices: () => voices, addEventListener() {}, cancel() { this.speaking = false; window.__cancelled = (window.__cancelled || 0) + 1; },
-    speak(u) { if (!u.text.trim()) { setTimeout(() => u.onend && u.onend(), 5); return; } this.speaking = true; window.__spoken.push({ text: u.text, voice: u.voice && u.voice.voiceURI, lang: u.lang, rate: u.rate }); setTimeout(() => { this.speaking = false; u.onend && u.onend(); }, 50); } };
+    speak(u) { if (!u.text.trim()) { setTimeout(() => u.onend && u.onend(), 5); return; } this.speaking = true; u.onstart && u.onstart(); window.__spoken.push({ text: u.text, voice: u.voice && u.voice.voiceURI, lang: u.lang, rate: u.rate }); setTimeout(() => { this.speaking = false; u.onend && u.onend(); }, 50); } };
   Object.defineProperty(window, "speechSynthesis", { value: synth });
   window.SpeechSynthesisUtterance = function (t) { this.text = t; };
 })();
@@ -63,6 +63,8 @@ with sync_playwright() as p:
     pg.select_option("#vs-voice", "g-el"); pg.fill("#vs-rate", "1.2"); pg.dispatch_event("#vs-rate", "input")
     pg.click("#vs-test"); pg.wait_for_timeout(300)
     last = pg.evaluate("window.__spoken[window.__spoken.length-1]")
+    pg.wait_for_function("document.querySelector('#vs-note').textContent.includes('διαβάζει')", timeout=5000)
+    check("Αν δεν ακούτε τίποτα" in pg.inner_text("#vs-note"), "«Δοκιμή»: λέει αν ο browser διαβάζει και τι να ελεγχθεί στη συσκευή")
     check(last["voice"] == "g-el" and abs(last["rate"] - 1.2) < 0.01 and "Βοηθός της MEGA GYM" in " ".join(x["text"] for x in pg.evaluate("window.__spoken")), "«Δοκιμή»: ακούγεται με την επιλεγμένη φωνή και ταχύτητα")
     shot(pg, "51_voice_settings")
     pg.reload(); pg.wait_for_selector("#ai-mic"); pg.click("#ai-vset")
@@ -102,7 +104,7 @@ with sync_playwright() as p:
     check(p3.evaluate("window.__swallowed") == 1 and p3.evaluate("window.__spoken[0].voice") is None, "φωνή που δεν παίζει: αυτόματα 2η προσπάθεια με την προεπιλεγμένη φωνή")
     p3.evaluate("window.__mute = true; window.__spoken = []")
     p3.locator(".msg.bot .say").last.click(); p3.wait_for_selector("#ai-vstat.bad", timeout=15000)
-    check("δεν έπαιξε ήχο" in p3.inner_text("#ai-vstat") and p3.get_attribute("#ai-mic", "data-state") == "idle", "καθόλου ήχος: καθαρό μήνυμα αντί για ατελείωτο «Διαβάζω»")
+    check("δεν ξεκίνησε την ανάγνωση" in p3.inner_text("#ai-vstat") and p3.get_attribute("#ai-mic", "data-state") == "idle", "καθόλου ήχος: καθαρό μήνυμα αντί για ατελείωτο «Διαβάζω»")
     no_js_errors(p3, "ανάγνωση με εφεδρεία")
 
     # Χωρίς υποστήριξη αναγνώρισης (π.χ. Firefox)

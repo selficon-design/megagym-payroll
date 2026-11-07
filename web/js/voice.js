@@ -45,7 +45,7 @@ const ERR = {
   "no-speech": "Δεν ακούστηκε τίποτα. Πατήστε ξανά το μικρόφωνο και μιλήστε.",
   "language-not-supported": "Ο browser δεν υποστηρίζει αναγνώριση ελληνικών.",
 };
-let rec = null;
+let rec = null, lastMicEnd = 0;
 /**
  * Ακούει μία φράση στα ελληνικά. Επιστρέφει συνάρτηση διακοπής.
  * onText(κείμενο, τελικό) · onEnd(τελικό κείμενο) · onError(μήνυμα)
@@ -66,7 +66,7 @@ export function listen({ onText, onEnd, onError, continuous = false, silenceMs =
     if (continuous) { clearTimeout(quiet); quiet = setTimeout(() => { try { r.stop(); } catch {} }, silenceMs); }
   };
   r.onerror = (e) => { if (e.error === "no-speech") return; failed = true; if (e.error === "aborted") return; onError?.(ERR[e.error] || "Η αναγνώριση ομιλίας σταμάτησε (" + e.error + ")."); };
-  r.onend = () => { clearTimeout(quiet); if (rec === r) rec = null; if (!failed) onEnd?.(final.trim()); };
+  r.onend = () => { clearTimeout(quiet); lastMicEnd = Date.now(); if (rec === r) rec = null; if (!failed) onEnd?.(final.trim()); };
   rec = r;
   try { r.start(); } catch (e) { rec = null; onError?.("Δεν ξεκίνησε το μικρόφωνο: " + e.message); }
   return () => { try { r.stop(); } catch {} };
@@ -117,17 +117,17 @@ export function unlock() {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Μία εκφώνηση· επιστρέφει "ok" | "stopped" | "silent" (δεν ξεκίνησε καθόλου) | "error" */
-function utter(text, v, rate, id) {
+function utter(text, v, rate, id, onFirst) {
   return new Promise((resolve) => {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = v?.lang || "el-GR"; if (v) u.voice = v; u.rate = rate; u.pitch = 1; u.volume = 1;
     let started = false, settled = false;
     const fin = (r) => { if (settled) return; settled = true; clearTimeout(guard); keep.delete(u); resolve(r); };
-    u.onstart = () => { started = true; };
+    u.onstart = () => { started = true; onFirst?.(v); };
     u.onend = () => fin(id === speakId ? "ok" : "stopped");
     u.onerror = (e) => fin(e.error === "interrupted" || e.error === "canceled" ? "stopped" : started ? "error" : "silent");
     // Αν σε 4″ δεν έχει ξεκινήσει ούτε μιλάει, ο browser την «κατάπιε»
-    const guard = setTimeout(() => { if (!started && !synth.speaking) { try { synth.cancel(); } catch {} fin("silent"); } }, 4000);
+    const guard = setTimeout(() => { if (!started) { try { synth.cancel(); } catch {} fin("silent"); } }, 4500);
     keep.add(u);
     try { synth.resume(); } catch {}
     synth.speak(u);
@@ -147,15 +147,18 @@ export function speak(text, { onStart, onEnd, onError } = {}) {
   return (async () => {
     if (!parts.length) { onEnd?.(); return; }
     if (busy) await wait(150);                      // ο Chrome χάνει ανάγνωση που ξεκινά αμέσως μετά από διακοπή
+    const sinceMic = Date.now() - lastMicEnd;
+    if (sinceMic < 700) await wait(700 - sinceMic); // μετά το μικρόφωνο η συσκευή χρειάζεται λίγο να γυρίσει σε αναπαραγωγή
     if (id !== speakId) return;
-    onStart?.();
+    let first = true;
+    const onFirst = (voiceUsed) => { if (first) { first = false; onStart?.(voiceUsed); } };
     for (let i = 0; i < parts.length; i++) {
-      let r = await utter(parts[i], v, rate, id);
+      let r = await utter(parts[i], v, rate, id, onFirst);
       if (r === "silent" && id === speakId) {         // 2η προσπάθεια με την προεπιλεγμένη φωνή του συστήματος
         v = null; await wait(150);
-        r = await utter(parts[i], null, rate, id);
+        r = await utter(parts[i], null, rate, id, onFirst);
         if (r === "silent") {
-          if (id === speakId) { onError?.("Ο browser δεν έπαιξε ήχο. Ελέγξτε την ένταση του υπολογιστή και ότι η καρτέλα δεν είναι σε σίγαση· αν συνεχίζει, πατήστε «⚙ Φωνή» → «▶ Δοκιμή»."); onEnd?.(); }
+          if (id === speakId) { onError?.("Ο browser δεν ξεκίνησε την ανάγνωση. Ανανεώστε τη σελίδα και ξαναδοκιμάστε· αν συνεχίζει, πατήστε «⚙ Φωνή» → «▶ Δοκιμή»."); onEnd?.(); }
           return;
         }
       }
@@ -166,3 +169,11 @@ export function speak(text, { onStart, onEnd, onError } = {}) {
 }
 export function stopSpeaking() { speakId++; if (canSpeak) { try { synth.cancel(); } catch {} } }
 export const isSpeaking = () => canSpeak && (synth.speaking || synth.pending);
+
+/** Στοιχεία για τη «Δοκιμή» φωνής. */
+export function diag() {
+  const ua = navigator.userAgent;
+  const device = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? "iphone" : /Android/.test(ua) ? "android" : /Mac/.test(ua) ? "mac" : /Windows/.test(ua) ? "windows" : "other";
+  const browser = /Edg\//.test(ua) ? "Edge" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : /Firefox|FxiOS/.test(ua) ? "Firefox" : "browser";
+  return { device, browser, voices: greekVoices().length, canSpeak, canListen };
+}

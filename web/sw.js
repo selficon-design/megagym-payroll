@@ -24,8 +24,11 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(caches.match(e.request).then((hit) => hit || fetch(e.request).then((r) => { const copy = r.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); return r; })));
     return;
   }
+  // «no-cache»: ο browser ρωτά πάντα τον server αν άλλαξε κάτι (γρήγορο 304), ώστε μετά από κάθε ενημέρωση
+  // να φορτώνει αμέσως η νέα έκδοση και όχι αντίγραφο έως 10 λεπτών.
+  const fresh = e.request.mode === "navigate" ? new Request(url.href, { cache: "no-cache", credentials: "same-origin" }) : new Request(e.request, { cache: "no-cache" });
   e.respondWith(
-    fetch(e.request).then((r) => { if (r.ok) { const copy = r.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); } return r; })
+    fetch(fresh).then((r) => { if (r.ok) { const copy = r.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); } return r; })
       .catch(() => caches.match(e.request).then((hit) => hit || caches.match("index.html")))
   );
 });
