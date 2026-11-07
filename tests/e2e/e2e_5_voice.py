@@ -8,7 +8,7 @@ FAKE = r"""
   window.__said = []; window.__spoken = []; window.__recStarts = 0;
   class FakeRec {
     constructor() { this.lang = ""; }
-    start() { window.__recStarts++; window.__rec = this; window.__recLang = this.lang;
+    start() { window.__recStarts++; window.__speaksAtRec = window.__allSpeaks||0; window.__rec = this; window.__recLang = this.lang;
       setTimeout(() => { const t = window.__nextSpeech || ""; if (!t) { this.onerror && this.onerror({ error: "no-speech" }); this.onend && this.onend(); return; }
         const res = [[{ transcript: t }]]; res[0].isFinal = true; this.onresult && this.onresult({ results: res }); this.onend && this.onend(); }, 300); }
     stop() {} abort() { this.onerror && this.onerror({ error: "aborted" }); this.onend && this.onend(); }
@@ -16,7 +16,7 @@ FAKE = r"""
   window.webkitSpeechRecognition = FakeRec; window.SpeechRecognition = FakeRec;
   const voices = [{ name: "Microsoft Athina Online (Natural) - Greek (Greece)", lang: "el-GR", voiceURI: "athina" }, { name: "Google Ελληνικά", lang: "el-GR", voiceURI: "g-el" }, { name: "English", lang: "en-US", voiceURI: "en" }];
   const synth = { speaking: false, pending: false, getVoices: () => voices, addEventListener() {}, cancel() { this.speaking = false; window.__cancelled = (window.__cancelled || 0) + 1; },
-    speak(u) { if (!u.text.trim()) { setTimeout(() => u.onend && u.onend(), 5); return; } this.speaking = true; u.onstart && u.onstart(); window.__spoken.push({ text: u.text, voice: u.voice && u.voice.voiceURI, lang: u.lang, rate: u.rate }); setTimeout(() => { this.speaking = false; u.onend && u.onend(); }, 50); } };
+    speak(u) { window.__allSpeaks = (window.__allSpeaks||0)+1; if (!u.text.trim()) { setTimeout(() => u.onend && u.onend(), 5); return; } this.speaking = true; u.onstart && u.onstart(); window.__spoken.push({ text: u.text, voice: u.voice && u.voice.voiceURI, lang: u.lang, rate: u.rate }); setTimeout(() => { this.speaking = false; u.onend && u.onend(); }, 50); } };
   Object.defineProperty(window, "speechSynthesis", { value: synth });
   window.SpeechSynthesisUtterance = function (t) { this.text = t; };
 })();
@@ -35,11 +35,12 @@ with sync_playwright() as p:
     # Πλωτό κουμπί σε άλλη σελίδα
     go(pg, "#/employees")
     check(pg.is_visible("#voice-fab"), "πλωτό κουμπί μικροφώνου σε κάθε σελίδα")
-    pg.evaluate("window.__nextSpeech = 'Ποιοι δεν έχουν υπογράψει αυτόν τον μήνα'")
+    pg.evaluate("window.__nextSpeech = 'Ποιοι δεν έχουν υπογράψει αυτόν τον μήνα'; window.__allSpeaks = 0")
     pg.click("#voice-fab")
     pg.wait_for_selector(".msg.bot >> text=Σάκης Τεστάκης", timeout=8000)
     check("#/assistant" in pg.url and not pg.is_visible("#voice-fab"), "το κουμπί ανοίγει τον Βοηθό και ακούει αμέσως")
     check(pg.evaluate("window.__recLang") == "el-GR", "αναγνώριση ομιλίας στα ελληνικά (el-GR)")
+    check(pg.evaluate("window.__speaksAtRec") == 0, "το πάτημα του μικροφώνου δεν παίζει κανέναν ήχο πριν ανοίξει το μικρόφωνο")
     check(pg.locator(".msg.user").first.inner_text().strip().endswith("Ποιοι δεν έχουν υπογράψει αυτόν τον μήνα") and pg.locator(".msg.user .said").count() == 1, "η φράση γράφεται στη συζήτηση με ένδειξη 🎤")
     check(asked[-1].get("voice") is True, "η φωνητική ερώτηση ζητά από τον server προφορική απάντηση")
     pg.wait_for_function("window.__spoken.length > 0")

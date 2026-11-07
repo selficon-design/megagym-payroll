@@ -115,6 +115,17 @@ export function unlock() {
   try { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; u.lang = "el-GR"; keep.add(u); u.onend = u.onerror = () => keep.delete(u); synth.speak(u); } catch {}
 }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// Ξεκλείδωμα με το ΠΡΩΤΟ πάτημα στη σελίδα που ΔΕΝ ανοίγει μικρόφωνο: η αναπαραγωγή τη στιγμή που ανοίγει
+// το μικρόφωνο εμποδίζει την εγγραφή σε συσκευές Apple (κοινή ρύθμιση ήχου για ηχείο και μικρόφωνο).
+const MIC_STARTERS = "#ai-mic,#voice-fab,#ky-voice,#ex-voice,#vr-rep,#vr-pause";
+if (canSpeak && typeof document !== "undefined") {
+  const onTap = (e) => {
+    if (unlocked) return document.removeEventListener("pointerdown", onTap, true);
+    if (e.target?.closest?.(MIC_STARTERS)) return;
+    unlock();
+  };
+  document.addEventListener("pointerdown", onTap, true);
+}
 
 /** Μία εκφώνηση· επιστρέφει "ok" | "stopped" | "silent" (δεν ξεκίνησε καθόλου) | "error" */
 function utter(text, v, rate, id, onFirst) {

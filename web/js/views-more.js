@@ -246,7 +246,6 @@ export async function assistant() {
     });
   };
   mic.onclick = () => {
-    voice.unlock();                                          // ξεκλείδωμα ήχου μέσα στο πάτημα (Safari/Chrome σε Mac)
     const st = mic.dataset.state;
     if (st === "listening") return stopRec();                // τέλος ομιλίας → η φράση στέλνεται τώρα
     if (st === "speaking") { voice.stopSpeaking(); if (conv) return startListening(); setMic("idle"); status(""); return; }   // στο αυτόματο: διακοπή και ακούει

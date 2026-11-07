@@ -169,7 +169,7 @@ async function boot() {
   $("#close-menu").onclick = $("#scrim").onclick = () => $("#app").classList.remove("menu-open");
   $("#global-month").onchange = (e) => { if (!e.target.value) return; setMonth(e.target.value); invalidate(); route(); };
   window.addEventListener("hashchange", route);
-  $("#voice-fab").onclick = () => { voice.unlock(); S.voiceStart = true; location.hash = "#/assistant"; };
+  $("#voice-fab").onclick = () => { S.voiceStart = true; location.hash = "#/assistant"; };
   window.addEventListener("mg:rerender", () => { invalidate(); route(); });
   window.addEventListener("online", () => toast("Η σύνδεση επανήλθε."));
   window.addEventListener("offline", () => toast("Χωρίς σύνδεση internet. Οι αλλαγές δεν θα αποθηκευτούν.", true));
