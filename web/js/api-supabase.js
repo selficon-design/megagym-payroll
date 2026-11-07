@@ -133,7 +133,7 @@ export async function createSupabaseApi(cfg) {
       return check(await q);
     },
 
-    async ask(messages) { const r = await fn("ask", { messages }); return r.answer; },
+    async ask(messages, opts = {}) { const r = await fn("ask", { messages, voice: !!opts.voice }); return r.answer; },
     ...hrApi(sb, all, rpc),
   };
 }

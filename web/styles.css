@@ -324,3 +324,30 @@ table.edit tr.bad td{background:var(--bad-soft)}
 table.entry th:first-child,table.entry td:first-child,table.daily th:first-child,table.daily td:first-child{position:sticky;left:0;z-index:1;background:#fff;box-shadow:1px 0 0 var(--line)}
 table.entry thead th:first-child,table.daily thead th:first-child{background:#fafbfc}
 table.entry td:first-child{min-width:170px}
+
+/* ── Φωνή στον Βοηθό AI ── */
+.mic-btn{flex:none;width:52px;height:52px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);font-size:22px;cursor:pointer;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.12);transition:transform .12s}
+.mic-btn:hover{transform:scale(1.06)}
+.mic-btn:disabled{background:var(--line);cursor:not-allowed;transform:none;opacity:.6}
+.mic-btn[data-state=listening]{background:var(--bad);color:#fff;animation:micpulse 1.2s ease-out infinite}
+.mic-btn[data-state=speaking]{background:var(--ink);color:#fff}
+@keyframes micpulse{0%{box-shadow:0 0 0 0 rgba(198,59,43,.55)}100%{box-shadow:0 0 0 16px rgba(198,59,43,0)}}
+.chat-form{align-items:center}
+.voice-status{padding:9px 16px;border-top:1px solid var(--line);font-size:14px;background:var(--accent-soft);display:flex;align-items:center;gap:10px}
+.voice-status.on{background:var(--bad-soft);color:#8a2a1f}
+.voice-status.bad{background:var(--bad-soft);color:#8a2a1f}
+.voice-status.warn{background:var(--warn-soft);color:var(--warn)}
+.rec-dot{width:10px;height:10px;border-radius:50%;background:var(--bad);display:inline-block;animation:blink 1s infinite}
+.msg{position:relative}
+.msg .say{position:absolute;right:-12px;bottom:-12px;width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.msg .say:hover{background:var(--accent-soft)}
+.msg .said{opacity:.75}
+.voice-set{margin-bottom:14px;display:flex;flex-direction:column;gap:10px}
+.voice-set .check{margin:0}
+.vs-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.vs-row label{margin:0;font-weight:600}
+.vs-row select{max-width:320px}
+.vs-row input[type=range]{width:140px}
+.voice-fab{position:fixed;right:22px;bottom:22px;z-index:40;width:62px;height:62px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);font-size:26px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.22);transition:transform .12s}
+.voice-fab:hover{transform:scale(1.07)}
+@media print{.voice-fab{display:none}}

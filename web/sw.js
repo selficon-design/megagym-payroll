@@ -7,7 +7,7 @@ const SHELL = [
   "js/api-supabase.js", "js/api-demo.js", "icons/icon-192.png", "icons/favicon-64.png",
   "js/hr-common.js", "js/fill-launch.js", "js/fill.js", "js/views-hr.js", "js/views-card.js", "js/views-stats.js",
   "js/views-assess.js", "js/views-admin.js", "js/stats-calc.js",
-  "a.html", "js/link.js",
+  "a.html", "js/link.js", "js/voice.js",
 ];
 
 self.addEventListener("install", (e) => {

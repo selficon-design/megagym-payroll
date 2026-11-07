@@ -1,3 +1,4 @@
+import * as voice from "./voice.js";
 // Εκκίνηση εφαρμογής, μενού και πλοήγηση
 import { S, can, role, getStatus, invalidate, setMonth } from "./core.js";
 import { $, $$, h, toast, monthLabel, ROLE_GR, closeDialog } from "./util.js";
@@ -73,6 +74,9 @@ async function route() {
   $("#page-title").textContent = r.title;
   $("#page-sub").textContent = r.group === "Μισθοδοσία" ? monthLabel(S.month) : "";
   $(".month-pick").hidden = r.group !== "Μισθοδοσία";
+  if (r.id !== "assistant") { voice.stopListening(); voice.stopSpeaking(); }
+  const ai = ROUTES.find((x) => x.id === "assistant");
+  $("#voice-fab").hidden = !(ai && ai.show() && r.id !== "assistant");
   const seq = ++renderSeq;
   const v = $("#view");
   v.innerHTML = `<div class="empty"><div class="spinner"></div></div>`;
@@ -165,6 +169,7 @@ async function boot() {
   $("#close-menu").onclick = $("#scrim").onclick = () => $("#app").classList.remove("menu-open");
   $("#global-month").onchange = (e) => { if (!e.target.value) return; setMonth(e.target.value); invalidate(); route(); };
   window.addEventListener("hashchange", route);
+  $("#voice-fab").onclick = () => { S.voiceStart = true; location.hash = "#/assistant"; };
   window.addEventListener("mg:rerender", () => { invalidate(); route(); });
   window.addEventListener("online", () => toast("Η σύνδεση επανήλθε."));
   window.addEventListener("offline", () => toast("Χωρίς σύνδεση internet. Οι αλλαγές δεν θα αποθηκευτούν.", true));

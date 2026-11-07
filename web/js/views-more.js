@@ -1,4 +1,5 @@
 // Οθόνες: Tablet καταστήματος, Βοηθός AI, Ιστορικό, Χρήστες, Ρυθμίσεις, Backup, Λογαριασμός
+import * as voice from "./voice.js";
 import { S, can, role, getStatus, invalidate, visibleStores, activeStores } from "./core.js";
 import { $, $$, h, badge, money, monthLabel, dateTime, relTime, statementText, toast, openDialog, closeDialog, confirmBox, norm, ROLE_GR, downloadXlsx, STATUS, dmy } from "./util.js";
 import { signaturePad } from "./signature.js";
@@ -146,37 +147,105 @@ export async function assistant() {
   const sugg = role() === "manager"
     ? ["Ποιοι δεν έχουν υπογράψει αυτόν τον μήνα;", ...(live ? ["Ποιες αποφάσεις δεν έχω γνωστοποιήσει στους εργαζόμενους;", "Ποιος έχει άδεια την επόμενη εβδομάδα;", "Ποιοι δεν έχουν στατιστικά για χθες;", "Ποιοι δεν έχουν κάνει ακόμη την αξιολόγηση;"] : ["Πόσα ποσά υπογράφηκαν αυτόν τον μήνα;", "Σύγκρινε με τον προηγούμενο μήνα"])]
     : ["Ποιοι δεν έχουν υπογράψει αυτόν τον μήνα;", ...(live ? ["Τι αιτήματα περιμένουν απόφασή μου;", "Μετατροπή Ρεσεψιόν ανά κατάστημα αυτόν τον μήνα", "Ποιος έχει άδεια την επόμενη εβδομάδα;", "Αποτελέσματα της τελευταίας αξιολόγησης"] : ["Σύνοψη μήνα ανά κατάστημα", "Σύνολα ποσών ανά εταιρεία φέτος"]), ...(can.audit() ? ["Τι άλλαξε τις τελευταίες μέρες;"] : [])];
+  const P = voice.prefs();
   view().innerHTML = `
-  <div class="page-head"><div><div class="eyebrow">Ρωτήστε σε απλά ελληνικά</div><h1>Βοηθός AI</h1>
+  <div class="page-head"><div><div class="eyebrow">Ρωτήστε σε απλά ελληνικά — γραπτά ή με φωνή</div><h1>Βοηθός AI</h1>
     <p class="muted">Μισθοδοσία, αιτήματα & άδειες, ημερήσια στατιστικά και αξιολογήσεις. Ψάχνει στα δεδομένα με τα δικαιώματα του λογαριασμού σας${role() === "manager" ? ` (κατάστημα ${h(S.me.store)})` : ""}. Δεν αλλάζει τίποτα.</p></div>
-    <button class="btn" id="ai-clear">Νέα συζήτηση</button></div>
+    <div class="row-actions"><button class="btn" id="ai-vset" aria-expanded="false">⚙ Φωνή</button><button class="btn" id="ai-clear">Νέα συζήτηση</button></div></div>
+  <div class="card voice-set" id="ai-vpanel" hidden>
+    <label class="check"><input type="checkbox" id="vs-speak" ${P.speak ? "checked" : ""}> Διάβαζε τις απαντήσεις φωναχτά</label>
+    <label class="check"><input type="checkbox" id="vs-hands" ${P.hands ? "checked" : ""}> Συνεχής συνομιλία (μετά την απάντηση ακούει ξανά)</label>
+    <div class="vs-row"><label for="vs-voice">Φωνή</label><select id="vs-voice"></select>
+      <label for="vs-rate">Ταχύτητα</label><input type="range" id="vs-rate" min="0.7" max="1.4" step="0.05" value="${P.rate}"><span id="vs-rate-v" class="muted small"></span>
+      <button class="btn sm" id="vs-test">▶ Δοκιμή</button></div>
+    <p class="muted small" id="vs-note"></p>
+  </div>
   <div class="card chat"><div class="chat-log" id="ai-log"></div>
     <div class="suggest" id="ai-sugg">${sugg.map((s) => `<button class="chip">${h(s)}</button>`).join("")}</div>
-    <form class="chat-form" id="ai-form"><textarea id="ai-in" rows="1" placeholder="π.χ. Ποιοι στη Γλυφάδα δεν έχουν υπογράψει τον Οκτώβριο;"></textarea><button class="btn primary">Αποστολή</button></form>
+    <div class="voice-status" id="ai-vstat" hidden></div>
+    <form class="chat-form" id="ai-form">
+      <button type="button" class="mic-btn" id="ai-mic" title="Πατήστε και μιλήστε" aria-label="Φωνητική ερώτηση">🎤</button>
+      <textarea id="ai-in" rows="1" placeholder="π.χ. Ποιοι στη Γλυφάδα δεν έχουν υπογράψει τον Οκτώβριο;"></textarea><button class="btn primary">Αποστολή</button></form>
   </div>`;
-  const log = $("#ai-log");
+  const log = $("#ai-log"), mic = $("#ai-mic"), stat = $("#ai-vstat");
   const draw = () => {
-    log.innerHTML = S.chat.length ? S.chat.map((m) => `<div class="msg ${m.role === "user" ? "user" : "bot"} ${m.err ? "err" : ""}">${m.role === "user" ? h(m.content) : md(m.content)}</div>`).join("")
-      : `<div class="empty" style="margin:auto"><div class="big">✦</div>Γράψτε μια ερώτηση ή διαλέξτε μία από κάτω.</div>`;
+    log.innerHTML = S.chat.length ? S.chat.map((m, i) => `<div class="msg ${m.role === "user" ? "user" : "bot"} ${m.err ? "err" : ""}">${m.role === "user" ? (m.voice ? `<span class="said">🎤</span> ` : "") + h(m.content) : md(m.content)}${m.role !== "user" && !m.err && voice.canSpeak ? `<button class="say" data-say="${i}" title="Ακρόαση" aria-label="Ακρόαση απάντησης">🔊</button>` : ""}</div>`).join("")
+      : `<div class="empty" style="margin:auto"><div class="big">🎤</div>Πατήστε το μικρόφωνο και μιλήστε, ή γράψτε μια ερώτηση.</div>`;
+    $$("[data-say]", log).forEach((b) => (b.onclick = () => say(S.chat[b.dataset.say].content)));
     log.scrollTop = log.scrollHeight;
   };
-  draw();
-  const send = async (text) => {
+  const status = (html, kind = "") => { stat.hidden = !html; stat.className = "voice-status " + kind; stat.innerHTML = html || ""; };
+  const setMic = (state) => { mic.dataset.state = state; mic.textContent = state === "listening" ? "■" : state === "speaking" ? "⏹" : "🎤"; mic.title = state === "listening" ? "Τέλος ομιλίας" : state === "speaking" ? "Σταμάτα την ανάγνωση" : "Πατήστε και μιλήστε"; };
+  const here = () => location.hash.startsWith("#/assistant");
+
+  const say = (text, after) => {
+    setMic("speaking");
+    status(`🔊 Διαβάζω την απάντηση… <button class="btn sm" id="vs-stop">Σταμάτα</button>`);
+    $("#vs-stop").onclick = () => { voice.stopSpeaking(); };
+    return voice.speak(text, { onEnd: () => { setMic("idle"); status(""); after?.(); } }).then(() => { if (mic.dataset.state === "speaking") { setMic("idle"); status(""); } });
+  };
+
+  const send = async (text, { spoken = false } = {}) => {
     text = text.trim(); if (!text) return;
-    S.chat.push({ role: "user", content: text }); draw();
+    S.chat.push({ role: "user", content: text, voice: spoken }); draw();
     $("#ai-in").value = ""; $("#ai-sugg").hidden = true;
     log.insertAdjacentHTML("beforeend", `<div class="msg bot" id="ai-typing"><span class="typing"><i></i><i></i><i></i></span></div>`); log.scrollTop = log.scrollHeight;
+    let answer = null;
     try {
-      const answer = await S.api.ask(S.chat.filter((m) => !m.err).map(({ role, content }) => ({ role, content })));
+      answer = await S.api.ask(S.chat.filter((m) => !m.err).map(({ role, content }) => ({ role, content })), { voice: spoken });
       S.chat.push({ role: "assistant", content: answer });
     } catch (e) { S.chat.push({ role: "assistant", content: e.message, err: true }); }
-    if (location.hash.startsWith("#/assistant")) draw();
+    if (!here()) return;
+    draw();
+    if (answer && spoken && voice.prefs().speak && voice.canSpeak) say(answer, () => { if (voice.prefs().hands && here()) startListening(); });
   };
+
+  let stopRec = () => {};
+  const startListening = () => {
+    if (!voice.canListen) return status("Η φωνητική εντολή λειτουργεί σε Google Chrome ή Microsoft Edge. Σε αυτόν τον browser γράψτε την ερώτηση.", "bad");
+    setMic("listening"); status(`<span class="rec-dot"></span> Ακούω… μιλήστε τώρα. Πατήστε ■ όταν τελειώσετε.`, "on");
+    $("#ai-in").value = "";
+    stopRec = voice.listen({
+      onText: (t) => { $("#ai-in").value = t; },
+      onEnd: (t) => { setMic("idle"); status(""); if (t) send(t, { spoken: true }); else status("Δεν ακούστηκε κάτι. Πατήστε ξανά το μικρόφωνο και μιλήστε.", "warn"); },
+      onError: (m) => { setMic("idle"); status(h(m), "bad"); },
+    });
+  };
+  mic.onclick = () => {
+    const st = mic.dataset.state;
+    if (st === "listening") return stopRec();                // τέλος ομιλίας → η φράση στέλνεται
+    if (st === "speaking") { voice.stopSpeaking(); setMic("idle"); status(""); return; }
+    startListening();
+  };
+  setMic("idle");
+  if (!voice.canListen) { mic.disabled = true; mic.title = "Η φωνητική εντολή λειτουργεί σε Google Chrome ή Microsoft Edge"; }
+
+  // Ρυθμίσεις φωνής
+  $("#ai-vset").onclick = () => { const p = $("#ai-vpanel"); p.hidden = !p.hidden; $("#ai-vset").setAttribute("aria-expanded", String(!p.hidden)); };
+  const fillVoices = () => {
+    const list = voice.greekVoices(), cur = voice.prefs().voice;
+    $("#vs-voice").innerHTML = list.length ? list.map((v) => `<option value="${h(v.voiceURI)}" ${v.voiceURI === cur ? "selected" : ""}>${h(v.name)}</option>`).join("") : `<option value="">Προεπιλογή συστήματος</option>`;
+    $("#vs-note").innerHTML = !voice.canSpeak ? "Αυτός ο browser δεν διαβάζει κείμενο φωναχτά."
+      : list.length ? `Ελληνικές φωνές σε αυτόν τον υπολογιστή: ${list.length}. Η ποιότητα εξαρτάται από τον browser και τα Windows· στο Microsoft Edge υπάρχουν πιο φυσικές φωνές («Online (Natural)»).`
+      : "Δεν βρέθηκε ελληνική φωνή στον υπολογιστή· η ανάγνωση μπορεί να ακούγεται με ξένη προφορά. Στα Windows: Ρυθμίσεις → Ώρα και γλώσσα → Ομιλία → Προσθήκη φωνών → Ελληνικά.";
+  };
+  fillVoices(); voice.onVoicesReady(fillVoices);
+  const rateLbl = () => ($("#vs-rate-v").textContent = `×${Number($("#vs-rate").value).toFixed(2).replace(".", ",")}`);
+  rateLbl();
+  $("#vs-speak").onchange = (e) => { voice.setPrefs({ speak: e.target.checked }); if (!e.target.checked) voice.stopSpeaking(); };
+  $("#vs-hands").onchange = (e) => voice.setPrefs({ hands: e.target.checked });
+  $("#vs-voice").onchange = (e) => voice.setPrefs({ voice: e.target.value });
+  $("#vs-rate").oninput = (e) => { voice.setPrefs({ rate: Number(e.target.value) }); rateLbl(); };
+  $("#vs-test").onclick = () => say(`Γεια σας, ${S.me.name.split(" ")[0]}. Είμαι ο Βοηθός της MEGA GYM. Ρωτήστε με, για παράδειγμα, ποιοι δεν έχουν υπογράψει αυτόν τον μήνα.`);
+
+  draw();
   $("#ai-form").onsubmit = (e) => { e.preventDefault(); send($("#ai-in").value); };
   $("#ai-in").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(e.target.value); } };
   $$("#ai-sugg .chip").forEach((b) => (b.onclick = () => send(b.textContent)));
-  $("#ai-clear").onclick = () => { S.chat = []; assistant(); };
+  $("#ai-clear").onclick = () => { voice.stopSpeaking(); voice.stopListening(); S.chat = []; assistant(); };
   $("#ai-sugg").hidden = S.chat.length > 0;
+  // Από το πλωτό κουμπί μικροφώνου: ξεκίνα αμέσως να ακούς
+  if (S.voiceStart) { S.voiceStart = false; startListening(); }
 }
 
 // ═══════════════════════ Ιστορικό ενεργειών ═══════════════════════
