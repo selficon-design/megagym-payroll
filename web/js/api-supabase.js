@@ -134,12 +134,12 @@ export async function createSupabaseApi(cfg) {
     },
 
     async ask(messages, opts = {}) { const r = await fn("ask", { messages, voice: !!opts.voice }); return r.answer; },
-    ...hrApi(sb, all, rpc),
+    ...hrApi(sb, all, rpc, fn),
   };
 }
 
 // ═══════════ Καρτέλα εργαζομένου, αιτήματα, πρότυπα, στατιστικά, αξιολογήσεις ═══════════
-function hrApi(sb, all, rpc) {
+function hrApi(sb, all, rpc, fn) {
   const REQ_COLS = "id,ref,process,category,employee_code,employee_name,store,company,specialty,status,entry_mode,stated_by,written_by,submitted_by,submitted_at,created_by,created_at,updated_at,assignee,leave_type,leave_type_label,start_date,end_date,days_requested,incident_date,notified_at,completed_at,version";
   return {
     // Ειδικότητες, εκπαιδευτές, ιστορικό θέσεων
@@ -256,6 +256,18 @@ function hrApi(sb, all, rpc) {
     linkCancel: (id, note) => rpc("link_cancel", { p_id: id, p_note: note || null }),
     linkSetWindow: (ids, s, e, note) => rpc("link_set_window", { p_ids: ids, p_starts: s, p_ends: e, p_note: note || null }),
     linkHistory: (id) => rpc("link_history", { p_id: id }),
+    // Σωστές απαντήσεις, παραδείγματα βαθμολόγησης, αξιολογήσεις AI (ΓΔ)
+    keyBegin: (qid) => rpc("q_key_begin", { p_qid: qid }),
+    keySave: (id, correct, model, points, status, spoken, note) => rpc("q_key_save", { p_question_id: id, p_correct: correct, p_model: model ?? null, p_points: points ?? null, p_status: status, p_spoken: spoken ?? null, p_note: note ?? null }),
+    keyConfirm: (versionId, ids) => rpc("q_key_confirm", { p_version_id: versionId, p_ids: ids }),
+    keyPoints: (versionId, pts) => rpc("q_key_points", { p_version_id: versionId, p_points: pts }),
+    exAnswers: (qid) => rpc("ex_answers", { p_qid: qid }),
+    exForQuestion: (qid) => rpc("ex_for_question", { p_question: qid }),
+    exSave: (att, qid, score, reason, spoken, source) => rpc("ex_save", { p_attempt: att, p_question: qid, p_score: score, p_reason: reason ?? null, p_spoken: spoken ?? null, p_source: source }),
+    exDelete: (id) => rpc("ex_delete", { p_id: id }),
+    evSave: (qid, rows, examples, model) => rpc("ev_save", { p_question: qid, p_rows: rows, p_examples: examples ?? 0, p_model: model ?? null }),
+    evReview: (id, action, score, reason) => rpc("ev_review", { p_id: id, p_action: action, p_score: score ?? null, p_reason: reason ?? null }),
+    aiKey: (body) => fn("answer-key", body),
     linkAssignments({ employee } = {}) {
       return all(() => { let q = sb.from("assessment_assignments").select("id,questionnaire_id,version_id,employee_code,employee_name,store,specialty,starts_at,ends_at,status,link_no,round,created_by,created_at,completed_at,cancelled_at").order("created_at", { ascending: false }); if (employee) q = q.eq("employee_code", employee); return q; });
     },

@@ -351,3 +351,23 @@ table.entry td:first-child{min-width:170px}
 .voice-fab{position:fixed;right:22px;bottom:22px;z-index:40;width:62px;height:62px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);font-size:26px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.22);transition:transform .12s}
 .voice-fab:hover{transform:scale(1.07)}
 @media print{.voice-fab{display:none}}
+
+/* ── Σωστές απαντήσεις / παραδείγματα / αξιολογήσεις AI ── */
+.key-model{white-space:pre-wrap;background:var(--accent-soft);border-radius:8px;padding:6px 9px;margin-top:4px;font-size:13px}
+.vr-card{padding:4px 0 10px}
+.vr-q{font-size:20px;font-weight:700;line-height:1.35;margin:6px 0 10px}
+.vr-opts{margin:0 0 6px 0;padding-left:0;list-style:none;display:grid;gap:6px}
+.vr-opts li{padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.vr-ans{margin-top:10px;padding:10px 12px;border-left:4px solid var(--accent);background:#f7f8fa;border-radius:8px;white-space:pre-wrap}
+.vr-live{min-height:22px;margin:8px 0;font-style:italic}
+.vr-type input{width:100%}
+.vr-foot{flex-wrap:wrap}
+.ex-group{border:1px solid var(--line);border-radius:12px;margin-top:14px;overflow:hidden}
+.ex-q{padding:12px 14px;background:#f7f8fa;border-bottom:1px solid var(--line)}
+.ex-row{display:grid;grid-template-columns:1fr 340px;gap:14px;padding:12px 14px;border-top:1px solid var(--line-2)}
+.ex-row:first-of-type{border-top:0}
+.ex-ans div{white-space:pre-wrap}
+.ex-rate{display:flex;flex-direction:column;gap:6px}
+.ex-rate .ex-s{width:90px}
+.ev-score{font-size:20px;font-weight:800}
+@media (max-width:760px){.ex-row{grid-template-columns:1fr}}

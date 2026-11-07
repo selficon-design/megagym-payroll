@@ -50,20 +50,23 @@ let rec = null;
  * Ακούει μία φράση στα ελληνικά. Επιστρέφει συνάρτηση διακοπής.
  * onText(κείμενο, τελικό) · onEnd(τελικό κείμενο) · onError(μήνυμα)
  */
-export function listen({ onText, onEnd, onError } = {}) {
+export function listen({ onText, onEnd, onError, continuous = false, silenceMs = 2500 } = {}) {
   if (!canListen) { onError?.("Η φωνητική εντολή λειτουργεί σε Google Chrome ή Microsoft Edge."); return () => {}; }
   stopListening();
   stopSpeaking();
   const r = new SR();
-  r.lang = "el-GR"; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
-  let final = "", failed = false;
+  // continuous: για μεγάλες εξηγήσεις με παύσεις — σταματά μετά από silenceMs σιωπής (ή με το κουμπί)
+  r.lang = "el-GR"; r.interimResults = true; r.continuous = !!continuous; r.maxAlternatives = 1;
+  let final = "", failed = false, quiet;
   r.onresult = (e) => {
     let interim = ""; final = "";
-    for (const res of e.results) (res.isFinal ? (final += res[0].transcript) : (interim += res[0].transcript));
+    for (const res of e.results) (res.isFinal ? (final += res[0].transcript + " ") : (interim += res[0].transcript));
+    final = final.replace(/\s+/g, " ");
     onText?.((final + interim).trim(), !interim);
+    if (continuous) { clearTimeout(quiet); quiet = setTimeout(() => { try { r.stop(); } catch {} }, silenceMs); }
   };
   r.onerror = (e) => { if (e.error === "no-speech") return; failed = true; if (e.error === "aborted") return; onError?.(ERR[e.error] || "Η αναγνώριση ομιλίας σταμάτησε (" + e.error + ")."); };
-  r.onend = () => { if (rec === r) rec = null; if (!failed) onEnd?.(final.trim()); };
+  r.onend = () => { clearTimeout(quiet); if (rec === r) rec = null; if (!failed) onEnd?.(final.trim()); };
   rec = r;
   try { r.start(); } catch (e) { rec = null; onError?.("Δεν ξεκίνησε το μικρόφωνο: " + e.message); }
   return () => { try { r.stop(); } catch {} };

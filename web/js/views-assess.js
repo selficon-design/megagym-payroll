@@ -3,6 +3,7 @@ import { S, can, role, getEmployees, activeSpecialties, visibleStores, invalidat
 import { $, $$, h, toast, openDialog, closeDialog, confirmBox, norm, downloadXlsx, loadScript } from "./util.js";
 import { athens, athensInput, attemptBadge, ATTEMPT_STATE, demoNotice } from "./hr-common.js";
 import { enterFill } from "./fill-launch.js";
+import { keysTab, examplesTab, evalsTab } from "./views-keys.js";
 
 const view = () => $("#view");
 const LETTERS = ["Α", "Β", "Γ", "Δ", "Ε", "ΣΤ"];
@@ -93,13 +94,16 @@ export async function assessmentView(params) {
   <div class="page-head"><div><div class="eyebrow">Ερωτηματολόγιο ${current ? `· ενεργή έκδοση ${current.version}` : ""}${latest?.status === "draft" && current ? ` · πρόχειρη έκδοση ${latest.version}` : ""}</div><h1>${h(q.title)}</h1>
     <p class="muted">${qBadge(q.status)} ${q.starts_at ? `Διαθέσιμο ${athens(q.starts_at)} → ${athens(q.ends_at)} (ώρα Ελλάδας)` : "Χωρίς διάστημα διαθεσιμότητας"}</p></div>
     <a class="btn" href="#/assessments">← Ερωτηματολόγια</a></div>
-  <div class="tabs">${[["settings", "Ρυθμίσεις & διαθεσιμότητα"], ["questions", "Ερωτήσεις"], ...(admin ? [["links", "Προσωπικοί σύνδεσμοι"]] : []), ["results", "Αποτελέσματα"]].map(([k, l]) => `<a href="#/assessment?id=${id}&tab=${k}" class="${k === tab ? "on" : ""}">${l}</a>`).join("")}</div>
+  <div class="tabs">${[["settings", "Ρυθμίσεις & διαθεσιμότητα"], ["questions", "Ερωτήσεις"], ...(admin ? [["keys", "Σωστές απαντήσεις"], ["links", "Προσωπικοί σύνδεσμοι"]] : []), ["results", "Αποτελέσματα"], ...(admin ? [["examples", "Παραδείγματα βαθμολόγησης"], ["evals", "Αξιολογήσεις AI"]] : [])].map(([k, l]) => `<a href="#/assessment?id=${id}&tab=${k}" class="${k === tab ? "on" : ""}">${l}</a>`).join("")}</div>
   <div id="qa-body"></div>`;
   const body = $("#qa-body");
   const reload = () => { invalidate(); assessmentView(params); };
   if (tab === "settings") return settingsTab(q, body, admin, reload);
   if (tab === "questions") return questionsTab(q, body, admin, reload);
   if (tab === "links" && admin) return linksTab(q, body, reload);
+  if (tab === "keys" && admin) return keysTab(q, body, reload);
+  if (tab === "examples" && admin) return examplesTab(q, body, reload);
+  if (tab === "evals" && admin) return evalsTab(q, body, reload);
   return resultsTab(q, body);
 }
 
@@ -262,7 +266,7 @@ export async function attemptDialog(attemptId) {
       <div class="card" style="grid-column:span 2"><div class="label muted small">Ανά ενότητα</div>${Object.entries(sections).map(([s, v]) => `<div class="small">${h(s)}: <strong>${v.max ? (v.pending ? "αναμένει βαθμολόγηση" : `${num(v.got)} / ${num(v.max)}`) : "χωρίς βαθμολογία (π.χ. αυτοαξιολόγηση)"}</strong></div>`).join("")}</div></div>`}
     <div class="table-wrap" style="margin-top:14px;max-height:55vh"><table><thead><tr><th>Ερώτηση</th><th>Απάντηση</th><th>Σωστή</th><th class="r">Βαθμοί</th></tr></thead><tbody>
     ${shown.map((x) => { const y = A[x.id]; const v = inProgress ? undefined : y?.answer; return `<tr><td class="small"><span class="muted">${h(x.section)}</span><br>${h(x.text)}</td><td class="small">${inProgress ? `<span class="muted">—</span>` : fmtAns(x, v)}</td>
-      <td class="small">${x.correct?.length ? h(x.correct.join(",")) + (y?.is_correct === true ? " ✓" : y?.is_correct === false ? " ✗" : "") : x.qtype === "scale" && !x.points ? "αυτοαξιολόγηση" : "—"}</td>
+      <td class="small">${x.correct?.length ? h(x.correct.join(",")) + (y?.is_correct === true ? " ✓" : y?.is_correct === false ? " ✗" : "") : x.qtype === "scale" && !x.points ? "αυτοαξιολόγηση" : x.qtype === "text" && x.model_answer ? `<span class="key-model" title="Πρότυπη απάντηση">${h(x.model_answer)}</span>` : "—"}</td>
       <td class="r num">${!y?.max_points ? "—" : y.needs_manual && !y.graded_at ? `<input class="grade" data-q="${x.id}" inputmode="decimal" placeholder="0–${num(y.max_points)}" style="width:80px">` : `${num(y.points)} / ${num(y.max_points)}${y.graded_by ? `<span class="sub">${h(y.graded_by)}</span>` : ""}`}</td></tr>`; }).join("")}
     </tbody></table></div>
     <p id="ad-m" class="form-msg"></p>
