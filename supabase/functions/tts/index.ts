@@ -11,10 +11,28 @@ async function settings() {
   const db = adminClient();
   const [{ data: key }, { data: vs }] = await Promise.all([
     db.from("app_secrets").select("value").eq("name", "elevenlabs_api_key").maybeSingle(),
-    db.from("voice_settings").select("provider,voice_id,voice_name,model").eq("id", 1).maybeSingle(),
+    db.from("voice_settings").select("provider,voice_id,voice_name,model,updated_by").eq("id", 1).maybeSingle(),
   ]);
-  return { key: key?.value as string | undefined, vs: vs ?? { provider: "browser", voice_id: null, voice_name: null, model: "eleven_multilingual_v2" } };
+  return { key: key?.value as string | undefined, vs: vs ?? { provider: "browser", voice_id: null, voice_name: null, model: "eleven_multilingual_v2", updated_by: null } as any };
 }
+// Αυτόματη ρύθμιση: αν το κλειδί μπήκε χειροκίνητα στη βάση και δεν έχει διαλέξει ποτέ κανείς φωνή,
+// διαλέγουμε μόνοι μας (Μελίνα → ελληνική φωνή → δική σας φωνή → πρώτη διαθέσιμη) με το γρήγορο Flash v2.5.
+// Δεν ξαναγίνεται αν η ΓΔ έχει ήδη επιλέξει ή απενεργοποιήσει φωνή (updated_by συμπληρωμένο).
+async function autoSetup(key: string, vs: any) {
+  if (vs.provider !== "browser" || vs.voice_id || vs.updated_by) return vs;
+  const r = await fetch(`${API}/voices`, { headers: { "xi-api-key": key } });
+  if (!r.ok) { console.error("auto-setup voices", r.status); return vs; }
+  const list: any[] = (await r.json()).voices ?? [];
+  const greek = (v: any) => /greek|ελλην|^el$/i.test([v.labels?.language, v.labels?.accent, v.verified_languages?.map((x: any) => x.language).join(" ")].filter(Boolean).join(" "));
+  const pick = list.find((v) => /melina|μελίνα|μελινα/i.test(v.name ?? "")) ?? list.find(greek)
+    ?? list.find((v) => v.category && v.category !== "premade") ?? list[0];
+  if (!pick) return vs;
+  const next = { provider: "elevenlabs", voice_id: pick.voice_id, voice_name: String(pick.name ?? "").slice(0, 120), model: "eleven_flash_v2_5", updated_by: "αυτόματη ρύθμιση" };
+  const { data } = await adminClient().from("voice_settings").update({ ...next, updated_at: new Date().toISOString() })
+    .eq("id", 1).is("updated_by", null).is("voice_id", null).select("provider,voice_id,voice_name,model,updated_by").maybeSingle();
+  return data ?? vs;
+}
+
 const elError = (status: number, body: string) =>
   status === 401 ? "Το κλειδί ElevenLabs δεν είναι έγκυρο ή ακυρώθηκε."
   : status === 402 || /quota|credits|character_limit/i.test(body) ? "Εξαντλήθηκαν οι χαρακτήρες του λογαριασμού ElevenLabs για αυτόν τον μήνα."
@@ -28,7 +46,9 @@ Deno.serve(async (req) => {
     const who = await identify(req);
     if (!who.me) return json({ error: who.error }, who.status);
     const body = await req.json().catch(() => ({}));
-    const { key, vs } = await settings();
+    const st = await settings();
+    const key = st.key;
+    const vs = key ? await autoSetup(key, st.vs) : st.vs;
 
     if (body.action === "status") return json({ provider: key ? vs.provider : "browser", voice_name: vs.voice_name, model: vs.model, configured: !!key });
 
