@@ -108,7 +108,8 @@ with sync_playwright() as p:
     # ── ΓΔ: αναθεώρηση άδειας & απόφαση προειδοποίησης
     pg = new_page(b); login(pg, "owner@test.gr"); go(pg, f"#/request?id={leave1}")
     pg.click("[data-act=decide]"); pg.wait_for_selector("#dd-s")
-    pg.fill("#dd-e", "2026-12-03"); pg.fill("#dd-d", "3"); pg.dispatch_event("#dd-d", "input")
+    pg.fill("#dd-e", "2026-12-03"); pg.dispatch_event("#dd-e", "change"); pg.wait_for_timeout(900); pg.wait_for_selector("#dd-plan select")
+    pg.wait_for_function("document.querySelector('#dd-msg').value.includes('έως και 03/12/2026')", timeout=8000)
     check("από 01/12/2026 έως και 03/12/2026, συνολικά 3 ημέρες" in pg.input_value("#dd-msg"), "αναθεώρηση: κείμενο έγκρισης με εγκεκριμένες ημερομηνίες")
     pg.click("#dd-ok"); pg.wait_for_timeout(800)
     t = pg.inner_text("#view")

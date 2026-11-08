@@ -7,7 +7,7 @@
 import { KINDS, totals, metrics, warnings, daysBetween } from "./stats-calc.js";
 
 export const CATEGORY_GR = {
-  leave: "Άδεια / απουσία", shift_change: "Αλλαγή βάρδιας, ρεπό ή προγράμματος", raise: "Αύξηση αποδοχών",
+  leave: "Άδεια / απουσία", leave_change: "Αλλαγή ημερομηνιών εγκεκριμένης άδειας", shift_change: "Αλλαγή βάρδιας, ρεπό ή προγράμματος", raise: "Αύξηση αποδοχών",
   contract_change: "Αλλαγή ωρών ή σύμβασης", advance: "Προκαταβολή", documents: "Βεβαιώσεις και έγγραφα",
   transfer: "Μετακίνηση καταστήματος ή αλλαγή θέσης", other_hr: "Λοιπό αίτημα προς HR",
   negative_review: "Αρνητική αξιολόγηση (αναφορά manager)", incident: "Περιστατικό (αναφορά manager)",
@@ -106,8 +106,13 @@ export const hrTools = [
     input_schema: { type: "object", properties: { title: { type: "string", description: "μέρος του τίτλου (προαιρετικό)" } } },
   },
   {
+    name: "leave_balance",
+    description: "Κανονική άδεια ενός εργαζομένου όπως την υπολογίζει ο server: ετήσια βάση, αναλογία έως την ημερομηνία, ληφθείσες, εγκεκριμένες μελλοντικές, υπόλοιπο βάσει αναλογίας, υπόλοιπο προηγούμενου έτους (έως 31/03) και κάλυψη αναρρωτικής. Μόνο για ρόλους με πρόσβαση στις άδειες.",
+    input_schema: { type: "object", properties: { employee: { type: "string", description: "όνομα ή κωδικός" }, date: { type: "string", description: "ΕΕΕΕ-ΜΜ-ΗΗ (προαιρετικό, προεπιλογή σήμερα)" } }, required: ["employee"] },
+  },
+  {
     name: "assessment_results",
-    description: "Αποτελέσματα αξιολογήσεων ανά εργαζόμενο (κατάσταση, έκδοση ερωτηματολογίου, βαθμοί/μέγιστο, %). Βαθμούς βλέπουν μόνο η ΓΔ και το HR· για τους άλλους ρόλους επιστρέφεται μόνο η κατάσταση. Οι βαθμοί συγκρίνονται μόνο μέσα στην ίδια έκδοση.",
+    description: "Αποτελέσματα αξιολογήσεων ανά εργαζόμενο (κατάσταση, έκδοση ερωτηματολογίου, βαθμοί/μέγιστο, %). Βαθμούς βλέπουν όσοι έχουν το δικαίωμα «Προβολή απαντήσεων και βαθμολογίας», στο πεδίο τους· Exit Interview μόνο ΓΔ/HR/εκπαιδευτής. Οι βαθμοί συγκρίνονται μόνο μέσα στην ίδια έκδοση.",
     input_schema: {
       type: "object",
       properties: { title: { type: "string" }, employee: { type: "string" }, store: { type: "string" }, specialty: { type: "string" }, state: { type: "string", enum: Object.keys(ATTEMPT_GR) } },
@@ -267,8 +272,32 @@ export async function runHrTool(db, name, input, me) {
       }
       return { count: out.length, questionnaires: out };
     }
+    case "leave_balance": {
+      if (!me.perms?.includes("leave.view")) return { error: "Δεν έχετε πρόσβαση στις άδειες." };
+      const pick = matchesEmployee(input.employee);
+      const emps = (await all(() => db.from("employees").select("code,first,last,store"))).filter((e) => pick(`${e.first} ${e.last}`, e.code));
+      if (!emps.length) return { error: "Δεν βρέθηκε εργαζόμενος στο πεδίο σας." };
+      if (emps.length > 1) return { choose_one: emps.slice(0, 10).map((e) => `${e.first} ${e.last} (${e.code}) · ${e.store}`) };
+      const { data, error } = await db.rpc("leave_card", { p_code: emps[0].code, p_as_of: isDate(input.date) ? input.date : null });
+      if (error) return { error: error.message };
+      const b = data.balance, s = data.sick;
+      return { employee: `${emps[0].first} ${emps[0].last} (${emps[0].code})`, as_of: dmy(b.as_of), year: b.year, annual_days: b.annual_days ?? "δεν έχει οριστεί ετήσια βάση",
+        accrued_to_date: b.accrued, taken: b.taken, approved_future: b.future_approved, adjustments: b.adjustments, balance_by_accrual: b.balance,
+        previous_year: { year: b.prev_year, balance: b.prev_balance, state: { usable: `διαθέσιμο έως ${dmy(b.prev_deadline)}`, to_settle: "Προς εκκαθάριση από το λογιστήριο", none: "κανένα" }[b.prev_state] },
+        sick_leave: s?.known ? { work_year: `${dmy(s.work_year_start)} – ${dmy(s.work_year_end)}`, sick_days: s.sick_days, covered: s.covered, limit: s.cover_limit, message: s.message || undefined } : undefined,
+        note: "Δύο δεκαδικά· η αναλογία είναι εσωτερικός δείκτης προγραμματισμού." };
+    }
     case "assessment_results": {
       const emp = input.employee ? matchesEmployee(input.employee) : null;
+      if (!["owner", "hr"].includes(me.role) && me.perms?.includes("assess.results")) {
+        // Manager / εκπαιδευτής με δικαίωμα αποτελεσμάτων: βαθμοί κανονικών αξιολογήσεων στο πεδίο τους (ο server φιλτράρει)
+        const { data, error } = await db.rpc("assess_results", {});
+        if (error) return { error: error.message };
+        const rows = (data || []).filter((x) => x.kind === "assessment" && (!input.title || norm(x.title).includes(norm(input.title))) && (!emp || emp(x.employee_name, x.employee_code))
+          && (!input.store || x.store === input.store) && (!input.specialty || x.specialty === input.specialty) && (!input.state || x.state === input.state));
+        return { count: rows.length, rows: rows.slice(0, 300).map((r) => ({ questionnaire: r.title, version: r.version, employee: `${r.employee_name} (${r.employee_code})`, store_at_the_time: r.store,
+          state: ATTEMPT_GR[r.state], submitted: athens(r.submitted_at), result: r.max_score ? `${r.score ?? "—"} / ${r.max_score}` : "χωρίς βαθμολόγηση" })) };
+      }
       if (!["owner", "hr"].includes(me.role)) {
         // Manager / εκπαιδευτής: μόνο κατάσταση, χωρίς βαθμούς
         const { data: open } = await db.rpc("assessments_open");

@@ -8,6 +8,7 @@ const SHELL = [
   "js/hr-common.js", "js/fill-launch.js", "js/fill.js", "js/views-hr.js", "js/views-card.js", "js/views-stats.js",
   "js/views-assess.js", "js/views-admin.js", "js/stats-calc.js",
   "a.html", "js/link.js", "js/voice.js", "js/views-keys.js",
+  "js/views-leave.js", "js/views-schedule.js", "js/views-perms.js",
 ];
 
 self.addEventListener("install", (e) => {

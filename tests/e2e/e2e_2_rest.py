@@ -45,7 +45,10 @@ with sync_playwright() as p:
     check("CB: 1 → 2" in pg.inner_text("#dlg"), "διόρθωση: ιστορικό προηγούμενης τιμής")
     pg.keyboard.press("Escape")
     shot(pg, "09_stats_entry")
-    check("Αναφορές στατιστικών" not in pg.inner_text("#nav"), "manager: χωρίς πρόσβαση σε αναφορές ομίλου")
+    # v3 §17: ο manager βλέπει αναφορές μόνο του δικού του καταστήματος, μέσα στην εφαρμογή, χωρίς εξαγωγή
+    go(pg, "#/stats-report"); pg.wait_for_timeout(800)
+    check(pg.query_selector("#sr-store") is None and pg.query_selector("#sr-xlsx") is None, "manager: αναφορές μόνο του καταστήματός του, χωρίς Excel")
+    check("Παράδειγμα" not in pg.inner_text("#view"), "manager: δεν βλέπει άλλα καταστήματα στις αναφορές")
     no_js_errors(pg, "στατιστικά manager"); pg.context.close()
 
     # ── Αναφορές (HR)
@@ -71,9 +74,12 @@ with sync_playwright() as p:
     tabs = pg.inner_text(".tabs")
     check(all(x in tabs for x in ["Στοιχεία", "Μισθοδοσία", "Αιτήματα", "Άδειες", "Αναφορές", "Ημερήσια στατιστικά", "Αξιολογήσεις"]), "ενιαία καρτέλα: όλες οι ενότητες")
     go(pg, "#/employee?code=T100&tab=payroll"); check("Οκτώβριος 2026" in pg.inner_text("#card-body"), "καρτέλα: δηλώσεις μισθοδοσίας")
-    go(pg, "#/employee?code=T100&tab=leave"); check("01/12/2026 – 03/12/2026 · 3 ημέρες" in pg.inner_text("#card-body"), "καρτέλα: εγκεκριμένη άδεια με τις εγκεκριμένες ημερομηνίες")
+    go(pg, "#/employee?code=T100&tab=leave"); pg.wait_for_selector("#card-body table"); pg.wait_for_timeout(300); lt = pg.inner_text("#card-body"); check("04/12/2026\tκανονική" not in lt and all(f"0{d}/12/2026\tκανονική (ετήσια) άδεια\tΑΙ-2026-00001" in lt for d in (1, 2, 3)) and "Εγκεκριμένες μελλοντικές\n3,00" in lt, "καρτέλα: εγκεκριμένη άδεια με τις εγκεκριμένες ημερομηνίες (3 ημέρες χρέωσης, μία φορά)")
     # Μετακίνηση καταστήματος & ειδικότητας
-    go(pg, "#/employees"); pg.click('[data-edit=T101]'); pg.select_option("#ef-store", "Κηφισιά"); pg.select_option("#ef-spec", "Ρεσεψιόν"); pg.click("#ef button.primary"); pg.wait_for_timeout(800)
+    # v3 §1: το κατάστημα δεν αλλάζει από τη φόρμα· η μόνιμη μεταφορά γίνεται από την καρτέλα με ημερομηνία ισχύος
+    go(pg, "#/employees"); pg.click('[data-edit=T101]'); check(pg.is_disabled("#ef-store"), "φόρμα: το κατάστημα δεν αλλάζει σιωπηρά")
+    pg.select_option("#ef-spec", "Ρεσεψιόν"); pg.click("#ef button.primary"); pg.wait_for_timeout(800)
+    go(pg, "#/employee?code=T101&tab=info"); pg.click("#ci-move"); pg.select_option("#cd-store", "Κηφισιά"); pg.fill("#cd-note", "Μόνιμη μεταφορά (δοκιμή)"); pg.click("#cd-ok"); pg.wait_for_timeout(1000)
     go(pg, "#/employee?code=T101&tab=info")
     t = pg.inner_text("#card-body")
     check(t.count("Γλυφάδα") >= 1 and "Κηφισιά" in t and "σήμερα" in t, "μετακίνηση: ιστορικό θέσης με παλιό και νέο κατάστημα")
@@ -110,8 +116,8 @@ with sync_playwright() as p:
     # ── Εκπαιδευτής: μόνο αξιολογήσεις, μόνο το πεδίο του
     pg = new_page(b); login(pg, "trainer@test.gr")
     nav = pg.inner_text("#nav")
-    check("Έναρξη αξιολόγησης" in nav and not any(x in nav for x in ["Δηλώσεις", "Εργαζόμενοι", "Αιτήματα", "Χρήστες", "Tablet"]), "εκπαιδευτής: μόνο αξιολογήσεις στο μενού")
-    go(pg, "#/declarations"); check("Έναρξη συμπλήρωσης" in pg.inner_text("#view"), "εκπαιδευτής: άμεσο URL μισθοδοσίας οδηγεί στις αξιολογήσεις")
+    check("Έναρξη αξιολόγησης" in nav and "Εργαζόμενοι" in nav and not any(x in nav for x in ["Δηλώσεις", "Αιτήματα", "Χρήστες", "Tablet", "Ρόλοι"]), "εκπαιδευτής (v3 §17): αξιολογήσεις και προβολή εργαζομένων, χωρίς μισθοδοσία/χρήστες")
+    go(pg, "#/declarations"); check(pg.inner_text("#page-title") != "Δηλώσεις" and "Προετοιμασία δηλώσεων" not in pg.inner_text("#view"), "εκπαιδευτής: άμεσο URL μισθοδοσίας δεν ανοίγει δηλώσεις")
     go(pg, "#/assess-run"); t = pg.inner_text("#view")
     check("Δοκιμή" in t and "Παράδειγμα" in t and "Υπόδειγμα" not in t, "εκπαιδευτής: Ρεσεψιόν όλων των καταστημάτων, όχι Exclusive")
     pg.click('[data-go=T100]'); confirm_dialog(pg)
@@ -153,10 +159,11 @@ with sync_playwright() as p:
     shot(pg, "15_assess_reports")
     no_js_errors(pg, "HR αξιολογήσεις"); pg.context.close()
 
-    # ── Manager: βλέπει κατάσταση αξιολόγησης, όχι βαθμό
+    # ── Manager (v3 §17): βλέπει τα αποτελέσματα του καταστήματός του, όχι τις σωστές απαντήσεις
     pg = new_page(b); login(pg, "glyfada@test.gr"); go(pg, "#/employee?code=T100&tab=assess")
     t = pg.inner_text("#card-body")
-    check("Υποβλήθηκε" in t and "/ 11" not in t and "βλέπουν μόνο" in t, "manager: κατάσταση χωρίς βαθμολογία")
+    check("6 / 11" in t, "manager: αποτέλεσμα αξιολόγησης εργαζομένου του καταστήματός του")
+    no_js_errors(pg, "manager αποτελέσματα")
     pg.context.close()
 
     # ── Κινητό: βασικές οθόνες χωράνε

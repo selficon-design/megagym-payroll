@@ -4,7 +4,7 @@ const WEB = process.argv[2], SECRET = process.env.JWT_SECRET, PG = "http://127.0
 const b64 = (o) => Buffer.from(typeof o === "string" ? o : JSON.stringify(o)).toString("base64url");
 export const jwt = (p) => { const h = b64({ alg: "HS256", typ: "JWT" }), b = b64(p); return `${h}.${b}.${crypto.createHmac("sha256", SECRET).update(`${h}.${b}`).digest("base64url")}`; };
 // Δοκιμαστικοί λογαριασμοί σύνδεσης (μόνο τοπικά, στη μνήμη)
-const AUTH = new Map(["owner@test.gr", "hr@test.gr", "glyfada@test.gr", "kifisia@test.gr", "trainer@test.gr", "mariamaneta@megagym.gr"]
+const AUTH = new Map(["owner@test.gr", "hr@test.gr", "glyfada@test.gr", "kifisia@test.gr", "trainer@test.gr", "accounting@test.gr", "mariamaneta@megagym.gr"]
   .map((e) => [e, { id: crypto.createHash("md5").update(e).digest("hex"), email: e, password: "test1234", banned_until: null, last_sign_in_at: null }]));
 const claims = (req) => { try { return JSON.parse(Buffer.from((req.headers.authorization || "").split(" ")[1].split(".")[1], "base64url")); } catch { return {}; } };
 const send = (res, code, obj) => { res.writeHead(code, { "Content-Type": "application/json" }); res.end(JSON.stringify(obj)); };

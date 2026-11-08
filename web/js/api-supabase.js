@@ -100,10 +100,12 @@ export async function createSupabaseApi(cfg) {
         return q;
       });
     },
-    async declaration(id) { return check(await sb.from("declarations").select("*").eq("id", id).single()); },
-    async declarationsFull(ids) {
+    // Η εικόνα υπογραφής ΔΕΝ διαβάζεται απευθείας· μόνο μέσω του server, για όσους έχουν δικαίωμα PDF (καταγράφεται)
+    async declaration(id) { return check(await sb.from("declarations").select(DECL_COLS + ",statement,device").eq("id", id).single()); },
+    async declarationPdf(id) { const r = check(await sb.rpc("decl_pdf_data", { p_ids: [id], p_purpose: "single" })); if (!r?.length) throw new Error("Η δήλωση δεν βρέθηκε ή δεν είναι υπογεγραμμένη."); return r[0]; },
+    async declarationsFull(ids, purpose = "bulk") {
       const out = [];
-      for (let i = 0; i < ids.length; i += 50) out.push(...check(await sb.from("declarations").select("*").in("id", ids.slice(i, i + 50))));
+      for (let i = 0; i < ids.length; i += 200) out.push(...check(await sb.rpc("decl_pdf_data", { p_ids: ids.slice(i, i + 200), p_purpose: purpose })));
       return out;
     },
     async prepare(month, rows) { return check(await sb.rpc("prepare_declarations", { p_month: month, p_rows: rows })); },
@@ -147,7 +149,7 @@ export async function createSupabaseApi(cfg) {
 
 // ═══════════ Καρτέλα εργαζομένου, αιτήματα, πρότυπα, στατιστικά, αξιολογήσεις ═══════════
 function hrApi(sb, all, rpc, fn) {
-  const REQ_COLS = "id,ref,process,category,employee_code,employee_name,store,company,specialty,status,entry_mode,stated_by,written_by,submitted_by,submitted_at,created_by,created_at,updated_at,assignee,leave_type,leave_type_label,start_date,end_date,days_requested,incident_date,notified_at,completed_at,version";
+  const REQ_COLS = "id,ref,process,category,employee_code,employee_name,store,company,specialty,status,entry_mode,stated_by,written_by,submitted_by,submitted_at,created_by,created_at,updated_at,assignee,leave_type,leave_type_label,start_date,end_date,days_requested,incident_date,notified_at,completed_at,version,original_request_id,leave_requested,leave_available,leave_excess,impl_claimed_by,impl_claimed_at";
   return {
     // Ειδικότητες, εκπαιδευτές, ιστορικό θέσεων
     async saveSpecialty(x, isNew) { check(isNew ? await sb.from("specialties").insert(x) : await sb.from("specialties").update(x).eq("name", x.name)); },
@@ -234,7 +236,7 @@ function hrApi(sb, all, rpc, fn) {
     },
     questions: (versionId) => all(() => sb.from("assessment_questions").select("*").eq("version_id", versionId).order("sort").order("row_no")),
     versionsAll: () => all(() => sb.from("questionnaire_versions").select("id,questionnaire_id,version,status")),
-    qCreate: (title, description) => rpc("q_create", { p_title: title, p_description: description }),
+    qCreate: (title, description, kind) => rpc("q_create", { p_title: title, p_description: description, p_kind: kind || "assessment" }),
     qUpdateMeta: (id, m) => rpc("q_update_meta", { p_id: id, p_title: m.title, p_description: m.description, p_specialties: m.specialties, p_participants: m.participants }),
     qParse: (rows) => rpc("q_parse_rows", { p_rows: rows }),
     qSaveQuestions: (id, rows, filename) => rpc("q_save_questions", { p_id: id, p_rows: rows, p_filename: filename }),
@@ -275,6 +277,59 @@ function hrApi(sb, all, rpc, fn) {
     evSave: (qid, rows, examples, model) => rpc("ev_save", { p_question: qid, p_rows: rows, p_examples: examples ?? 0, p_model: model ?? null }),
     evReview: (id, action, score, reason) => rpc("ev_review", { p_id: id, p_action: action, p_score: score ?? null, p_reason: reason ?? null }),
     aiKey: (body) => fn("answer-key", body),
+    // ── Έκδοση 3: κύκλος ζωής εργαζομένου ──
+    workTerms: (code) => all(() => sb.from("employee_work_terms").select("*").eq("employee_code", code).order("valid_from", { ascending: false })),
+    lifecycle: (code) => all(() => sb.from("employee_lifecycle").select("*").eq("employee_code", code).order("at", { ascending: false })),
+    empSetWorkTerms: (code, ww, hours, from, note) => rpc("emp_set_work_terms", { p_code: code, p_work_week: ww, p_weekly_hours: hours, p_valid_from: from, p_note: note || null }),
+    empSetDates: (code, hire, leave, note) => rpc("emp_set_dates", { p_code: code, p_hire: hire || null, p_leave: leave || null, p_note: note || null }),
+    empTransfer: (code, store, eff, note) => rpc("emp_transfer", { p_code: code, p_store: store, p_effective: eff, p_note: note || null }),
+    // ── Άδειες ──
+    leaveCard: (code, asOf) => rpc("leave_card", { p_code: code, p_as_of: asOf || null }),
+    leavePreview: (code, s, e, type, req) => rpc("leave_preview", { p_code: code, p_start: s, p_end: e, p_leave_type: type, p_request: req || null }),
+    leaveCheck: (id) => rpc("leave_check", { p_request: id }),
+    leaveCalendar: (from, to, store, spec, closed) => rpc("leave_calendar", { p_from: from, p_to: to, p_store: store || null, p_specialty: spec || null, p_include_closed: !!closed }),
+    leaveCancel: (id, days, reason) => rpc("leave_cancel", { p_request: id, p_days: days?.length ? days : null, p_reason: reason }),
+    leaveAdjust: (code, year, value, asOf, reason) => rpc("leave_adjust", { p_code: code, p_year: year, p_new_value: value, p_as_of: asOf, p_reason: reason }),
+    leaveSetBase: (code, days, from, note, replace) => rpc("leave_set_base", { p_code: code, p_annual: days, p_valid_from: from, p_note: note || null, p_replace: !!replace }),
+    leaveSuggest: (code) => rpc("leave_suggest_bases", { p_code: code }),
+    leaveSettle: (code, year, days, amount, paidOn, doc, note) => rpc("leave_settle", { p_code: code, p_year: year, p_days: days, p_amount: amount, p_paid_on: paidOn, p_doc: doc || null, p_note: note || null }),
+    leaveSettleVoid: (id, reason) => rpc("leave_settle_void", { p_id: id, p_reason: reason }),
+    leaveToSettle: (year) => rpc("leave_to_settle", { p_year: year || null }),
+    settlementDoc: (id) => rpc("leave_settlement_doc", { p_id: id }),
+    holidays: () => all(() => sb.from("public_holidays").select("*").order("day")),
+    async addHoliday(day, label) { check(await sb.from("public_holidays").insert({ day, label })); },
+    async removeHoliday(day) { check(await sb.from("public_holidays").delete().eq("day", day)); },
+    // ── Πρόγραμμα ──
+    schedWeek: (store, week, spec) => rpc("sched_week", { p_store: store, p_week_start: week, p_specialty: spec || null }),
+    schedSetPattern: (code, from, days, reason) => rpc("sched_set_pattern", { p_code: code, p_valid_from: from, p_days: days, p_reason: reason || null }),
+    schedSetTemp: (code, days, segs, reason) => rpc("sched_set_temp", { p_code: code, p_days: days, p_segments: segs, p_reason: reason || null }),
+    schedClearTemp: (code, days, reason) => rpc("sched_clear_temp", { p_code: code, p_days: days, p_reason: reason || null }),
+    schedFinalize: (store, week) => rpc("sched_finalize", { p_store: store, p_week_start: week }),
+    schedHistory: (store, from, to, code) => rpc("sched_history", { p_store: store, p_from: from || null, p_to: to || null, p_employee: code || null }),
+    schedPatterns: (code) => all(() => sb.from("schedule_patterns").select("*").eq("employee_code", code).order("valid_from", { ascending: false })),
+    shiftTemplates: () => all(() => sb.from("shift_templates").select("*").order("sort").order("id")),
+    async saveShiftTemplate(x) { check(x.id ? await sb.from("shift_templates").update(x).eq("id", x.id) : await sb.from("shift_templates").insert(x)); },
+    storeHours: (store) => all(() => { let q = sb.from("store_hours").select("*").order("specialty", { nullsFirst: true }).order("weekday").order("valid_from", { ascending: false }); if (store) q = q.eq("store", store); return q; }),
+    async addStoreHours(rows) { check(await sb.from("store_hours").insert(rows)); },
+    async removeStoreHour(id) { check(await sb.from("store_hours").delete().eq("id", id)); },
+    // ── Ρόλοι & δικαιώματα ──
+    permMatrix: () => rpc("permissions_matrix"),
+    permSave: (changes, scopes, note) => rpc("permissions_save", { p_changes: changes, p_scopes: scopes, p_note: note }),
+    // ── Υλοποίηση, ειδοποιήσεις, εργασίες ──
+    reqImplClaim: (id, v) => rpc("req_impl_claim", { p_id: id, p_version: v }),
+    reqImplComplete: (id, note, file, v) => rpc("req_impl_complete", { p_id: id, p_note: note, p_file: file || null, p_version: v }),
+    reqTaskAdd: (id, roleName, text) => rpc("req_task_add", { p_id: id, p_role: roleName, p_text: text }),
+    reqTaskDone: (task, note) => rpc("req_task_done", { p_task: task, p_note: note || null }),
+    requestTasks: (id) => all(() => sb.from("request_tasks").select("*").eq("request_id", id).order("created_at")),
+    myTasks: () => rpc("my_tasks"),
+    notifCount: () => rpc("notif_count"),
+    notifList: (allItems) => rpc("notif_list", { p_all: !!allItems }),
+    notifRead: (id) => rpc("notif_read_request", { p_request: id }),
+    // ── Αποτελέσματα / Exit Interview ──
+    assessQuestionnaires: () => rpc("assess_questionnaires"),
+    assessResults: (qid, code) => rpc("assess_results", { p_qid: qid || null, p_code: code || null }),
+    attemptView: (id) => rpc("attempt_view", { p_attempt: id }),
+    exitReport: (qid, from, to) => rpc("exit_report", { p_qid: qid || null, p_from: from || null, p_to: to || null }),
     linkAssignments({ employee } = {}) {
       return all(() => { let q = sb.from("assessment_assignments").select("id,questionnaire_id,version_id,employee_code,employee_name,store,specialty,starts_at,ends_at,status,link_no,round,created_by,created_at,completed_at,cancelled_at").order("created_at", { ascending: false }); if (employee) q = q.eq("employee_code", employee); return q; });
     },

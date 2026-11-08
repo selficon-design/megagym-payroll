@@ -233,16 +233,20 @@ export async function viewDeclaration(id) {
       ${d.status === "voided" ? `<dt>Ακύρωση</dt><dd>${dateTime(d.voided_at)} · ${h(d.voided_by)} — «${h(d.void_reason)}»</dd>` : ""}
     </dl>
     <div class="statement">${h(d.statement || statementText(d.company, d.end_date, d.period, d.amount))}</div>
-    ${d.signature ? `<p style="margin-top:14px"><img class="sig-img" src="${h(d.signature)}" alt="Υπογραφή"></p><p><strong>${h(d.signer)}</strong></p>` : ""}
+    ${d.status === "signed" ? `<div id="vd-sig" style="margin-top:14px"><p><strong>${h(d.signer || "")}</strong> · υπογράφηκε ${dateTime(d.signed_at)}</p>${can.pdf() ? `<button class="btn sm" id="vd-showsig">Εμφάνιση υπογραφής</button>` : `<p class="muted small">Η εικόνα της υπογραφής και το PDF διατίθενται μόνο σε Γενική Διεύθυνση και λογιστήριο.</p>`}</div>` : ""}
     <div class="dlg-foot">
       ${can.void() && d.status !== "voided" ? `<button class="btn danger" id="vd-void">Ακύρωση δήλωσης</button>` : ""}
       <span class="spacer"></span>
-      ${d.status === "signed" ? `<button class="btn" id="vd-pdf">⇩ PDF</button>` : ""}
+      ${d.status === "signed" && can.pdf() ? `<button class="btn" id="vd-pdf">⇩ PDF</button>` : ""}
       <button class="btn primary" data-close>Κλείσιμο</button></div>`,
     {
       wide: true,
       onOpen() {
-        $("#vd-pdf") && ($("#vd-pdf").onclick = async () => { try { await downloadDeclarationPdf(d); } catch (e) { toast("Δεν δημιουργήθηκε το PDF: " + e.message, true); } });
+        // Η υπογραφή έρχεται ΜΟΝΟ από τον server, για όσους έχουν δικαίωμα PDF (η λήψη καταγράφεται)
+        $("#vd-pdf") && ($("#vd-pdf").onclick = async () => { try { await downloadDeclarationPdf(await S.api.declarationPdf(d.id)); } catch (e) { toast("Δεν δημιουργήθηκε το PDF: " + e.message, true); } });
+        $("#vd-showsig") && ($("#vd-showsig").onclick = async () => {
+          try { const f = await S.api.declarationPdf(d.id); $("#vd-showsig").outerHTML = `<p><img class="sig-img" src="${h(f.signature)}" alt="Υπογραφή"></p>`; } catch (e) { toast(e.message, true); }
+        });
         $("#vd-void") && ($("#vd-void").onclick = async () => {
           const reason = await confirmBox("Ακύρωση δήλωσης", "Η δήλωση θα μείνει στο αρχείο ως ακυρωμένη και θα μπορεί να γίνει νέα για τον ίδιο μήνα.", { ok: "Ακύρωση δήλωσης", danger: true, input: "Αιτιολογία" });
           if (!reason) return;
@@ -434,7 +438,8 @@ export async function declarations() {
 // ═══════════════════════ Εργαζόμενοι ═══════════════════════
 const EMP_HEAD = ["Κωδικός εργαζομένου", "Όνομα", "Επώνυμο", "Κατάστημα", "Εταιρεία", "Κατάσταση"];
 // Προαιρετικές στήλες (επέκταση). Το παλιό πρότυπο 6 στηλών εξακολουθεί να γίνεται δεκτό.
-const EMP_EXTRA = ["Ειδικότητα", "Ημερομηνία πρόσληψης"];
+const EMP_EXTRA = ["Ειδικότητα", "Ημερομηνία πρόσληψης", "Πενθήμερο/Εξαήμερο", "Ώρες/εβδομάδα", "Email", "Τηλέφωνο"];
+const wwText = (w) => (w === 6 ? "Εξαήμερο" : w === 5 ? "Πενθήμερο" : "");
 
 export async function employees() {
   const F = (S.filters.emp ??= { q: "", store: "", status: "Ενεργός", spec: "" });
@@ -456,9 +461,10 @@ export async function employees() {
       <select id="em-spec"><option value="">Όλες οι ειδικότητες</option>${activeSpecialties().map((x) => `<option ${x === F.spec ? "selected" : ""}>${h(x)}</option>`).join("")}<option value="-" ${F.spec === "-" ? "selected" : ""}>Χωρίς ειδικότητα</option></select>
       <div class="chips">${[["Ενεργός", "Ενεργοί"], ["Ανενεργός", "Ανενεργοί"], ["", "Όλοι"]].map(([k, l]) => `<button class="chip ${F.status === k ? "on" : ""}" data-st="${k}">${l}<span class="n">${all.filter((e) => (!F.store || e.store === F.store) && (!k || e.status === k)).length}</span></button>`).join("")}</div>
     </div>
-    ${list.length ? `<div class="table-wrap"><table class="stack"><thead><tr><th>Εργαζόμενος</th><th>Ειδικότητα</th><th>Κατάστημα</th><th>Εταιρεία</th><th>Κατάσταση</th><th></th></tr></thead><tbody>
-      ${list.map((e) => `<tr><td><a href="#/employee?code=${encodeURIComponent(e.code)}" style="text-decoration:none"><strong>${h(e.last)} ${h(e.first)}</strong></a><span class="sub">${h(e.code)}</span></td><td data-l="Ειδικότητα">${h(e.specialty || "—")}</td><td data-l="Κατάστημα">${h(e.store)}</td><td data-l="Εταιρεία">${h(e.company)}</td>
-        <td><span class="badge ${e.status === "Ενεργός" ? "b-signed" : "b-missing"}">${h(e.status)}</span></td>
+    ${list.length ? `<div class="table-wrap"><table class="stack"><thead><tr><th>Εργαζόμενος</th><th>Ειδικότητα</th><th>Κατάστημα</th><th>Σύστημα</th><th>Κατάσταση</th><th></th></tr></thead><tbody>
+      ${list.map((e) => `<tr><td><a href="#/employee?code=${encodeURIComponent(e.code)}" style="text-decoration:none"><strong>${h(e.last)} ${h(e.first)}</strong></a><span class="sub">${h(e.code)} · ${h(e.company)}</span></td><td data-l="Ειδικότητα">${h(e.specialty || "—")}</td><td data-l="Κατάστημα">${h(e.store)}</td>
+        <td data-l="Σύστημα">${e.work_week ? wwText(e.work_week) : S.api.mode === "demo" ? "—" : `<span class="badge b-missing">Λείπει</span>`}</td>
+        <td><span class="badge ${e.status === "Ενεργός" ? "b-signed" : "b-missing"}">${h(e.status)}</span>${e.leave_date ? `<span class="sub">αποχώρηση ${dmy(e.leave_date)}</span>` : ""}</td>
         <td class="acts"><div class="row-actions" style="justify-content:flex-end">${S.api.mode === "demo" ? `<button class="btn sm ghost" data-hist="${h(e.code)}">Ιστορικό</button>` : `<a class="btn sm ghost" href="#/employee?code=${encodeURIComponent(e.code)}">Καρτέλα</a>`}${ed ? `<button class="btn sm" data-edit="${h(e.code)}">Επεξεργασία</button>` : ""}</div></td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty"><div class="big">♙</div>${all.length ? "Δεν βρέθηκαν εργαζόμενοι με αυτά τα φίλτρα." : "Δεν υπάρχουν ακόμη εργαζόμενοι." + (ed ? " Προσθέστε έναν ή κάντε εισαγωγή από Excel." : "")}</div>`}
   </div>`;
@@ -470,14 +476,14 @@ export async function employees() {
   $$("[data-edit]").forEach((b) => (b.onclick = () => employeeDialog(all.find((e) => e.code === b.dataset.edit))));
   $$("[data-hist]").forEach((b) => (b.onclick = () => employeeHistory(all.find((e) => e.code === b.dataset.hist))));
   $("#em-new") && ($("#em-new").onclick = () => employeeDialog(null));
-  $("#em-export").onclick = () => downloadXlsx("Εργαζόμενοι.xlsx", { "Εργαζόμενοι": [[...EMP_HEAD, ...EMP_EXTRA], ...list.map((e) => [e.code, e.first, e.last, e.store, e.company, e.status, e.specialty || "", e.hire_date ? dmy(e.hire_date) : ""])] });
-  $("#em-tpl") && ($("#em-tpl").onclick = () => downloadXlsx("Πρότυπο_Εργαζομένων.xlsx", { "Εργαζόμενοι": [[...EMP_HEAD, ...EMP_EXTRA], ["MG1001", "Όνομα", "Επώνυμο", activeStores()[0], activeCompanies()[0], "Ενεργός", activeSpecialties()[0] || "", "01/09/2024"]], "Επιλογές": [["Καταστήματα", "Εταιρείες", "Κατάσταση", "Ειδικότητες"], ...Array.from({ length: Math.max(activeStores().length, activeCompanies().length, activeSpecialties().length) }, (_, i) => [activeStores()[i] || "", activeCompanies()[i] || "", ["Ενεργός", "Ανενεργός"][i] || "", activeSpecialties()[i] || ""])] }));
+  $("#em-export").onclick = () => downloadXlsx("Εργαζόμενοι.xlsx", { "Εργαζόμενοι": [[...EMP_HEAD, ...EMP_EXTRA], ...list.map((e) => [e.code, e.first, e.last, e.store, e.company, e.status, e.specialty || "", e.hire_date ? dmy(e.hire_date) : "", wwText(e.work_week), e.weekly_hours ?? "", e.email || "", e.phone || ""])] });
+  $("#em-tpl") && ($("#em-tpl").onclick = () => downloadXlsx("Πρότυπο_Εργαζομένων.xlsx", { "Εργαζόμενοι": [[...EMP_HEAD, ...EMP_EXTRA], ["MG1001", "Όνομα", "Επώνυμο", activeStores()[0], activeCompanies()[0], "Ενεργός", activeSpecialties()[0] || "", "01/09/2024", "Πενθήμερο", 40, "", ""]], "Επιλογές": [["Καταστήματα", "Εταιρείες", "Κατάσταση", "Ειδικότητες"], ...Array.from({ length: Math.max(activeStores().length, activeCompanies().length, activeSpecialties().length) }, (_, i) => [activeStores()[i] || "", activeCompanies()[i] || "", ["Ενεργός", "Ανενεργός"][i] || "", activeSpecialties()[i] || ""])] }));
   $("#em-file") && ($("#em-file").onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) importEmployees(f, all); });
 }
 
 function employeeDialog(e) {
   const isNew = !e;
-  e ??= { code: "", first: "", last: "", store: S.filters.emp?.store || activeStores()[0], company: activeCompanies()[0], status: "Ενεργός", specialty: null, hire_date: null };
+  e ??= { code: "", first: "", last: "", store: S.filters.emp?.store || activeStores()[0], company: activeCompanies()[0], status: "Ενεργός", specialty: null, hire_date: null, work_week: null, weekly_hours: null, email: "", phone: "" };
   const stores = [...new Set([...activeStores(), e.store])], comps = [...new Set([...activeCompanies(), e.company])];
   openDialog(`
     <div class="dlg-head"><h2>${isNew ? "Νέος εργαζόμενος" : "Επεξεργασία εργαζομένου"}</h2><button class="icon-btn" data-close>✕</button></div>
@@ -486,12 +492,16 @@ function employeeDialog(e) {
       <div><label>Κατάσταση</label><select id="ef-status">${["Ενεργός", "Ανενεργός"].map((s) => `<option ${s === e.status ? "selected" : ""}>${s}</option>`).join("")}</select></div>
       <div><label>Όνομα</label><input id="ef-first" required maxlength="150" value="${h(e.first)}"></div>
       <div><label>Επώνυμο</label><input id="ef-last" required maxlength="150" value="${h(e.last)}"></div>
-      <div><label>Κατάστημα</label><select id="ef-store">${stores.map((s) => `<option ${s === e.store ? "selected" : ""}>${h(s)}</option>`).join("")}</select></div>
+      <div><label>Κατάστημα</label><select id="ef-store" ${isNew || S.api.mode === "demo" ? "" : "disabled title='Μόνιμη μεταφορά από την καρτέλα του εργαζομένου (με ημερομηνία ισχύος)'"}>${stores.map((s) => `<option ${s === e.store ? "selected" : ""}>${h(s)}</option>`).join("")}</select></div>
       <div><label>Εταιρεία</label><select id="ef-company">${comps.map((s) => `<option ${s === e.company ? "selected" : ""}>${h(s)}</option>`).join("")}</select></div>
       ${S.api.mode === "demo" ? "" : `<div><label>Ειδικότητα</label><select id="ef-spec"><option value="">—</option>${[...new Set([...activeSpecialties(), e.specialty].filter(Boolean))].map((s) => `<option ${s === e.specialty ? "selected" : ""}>${h(s)}</option>`).join("")}</select></div>
-      <div><label>Ημερομηνία πρόσληψης</label><input type="date" id="ef-hire" value="${h(e.hire_date || "")}"></div>`}
+      <div><label>Ημερομηνία πρόσληψης</label><input type="date" id="ef-hire" value="${h(e.hire_date || "")}"></div>
+      <div><label>Πενθήμερο / εξαήμερο ${isNew ? "<span class='muted'>(υποχρεωτικό)</span>" : ""}</label><select id="ef-ww" ${isNew ? "required" : "disabled title='Αλλαγή με ημερομηνία ισχύος από την καρτέλα του εργαζομένου'"}><option value="">— επιλέξτε —</option><option value="5" ${e.work_week === 5 ? "selected" : ""}>Πενθήμερο</option><option value="6" ${e.work_week === 6 ? "selected" : ""}>Εξαήμερο</option></select></div>
+      <div><label>Συμβατικές ώρες / εβδομάδα</label><input id="ef-wh" inputmode="decimal" value="${e.weekly_hours ? String(e.weekly_hours).replace(".", ",") : ""}" ${isNew ? "" : "disabled"}></div>
+      <div><label>Email</label><input id="ef-email" type="email" maxlength="254" value="${h(e.email || "")}"></div>
+      <div><label>Τηλέφωνο</label><input id="ef-phone" maxlength="30" value="${h(e.phone || "")}"></div>`}
     </div>
-    ${isNew ? "" : `<p class="muted small" style="margin-top:10px">Αλλαγή καταστήματος ή ειδικότητας: ο κωδικός και όλο το ιστορικό μένουν· οι παλιές εγγραφές κρατούν το κατάστημα της περιόδου τους.</p>`}
+    ${isNew ? "" : `<p class="muted small" style="margin-top:10px">Μόνιμη μεταφορά, αποχώρηση και αλλαγή πενθήμερου/εξαήμερου γίνονται από την καρτέλα του εργαζομένου, με ημερομηνία ισχύος και ιστορικό.</p>`}
     ${isNew ? "" : `<p class="muted small" style="margin-top:10px">Ο κωδικός δεν αλλάζει, γιατί τον χρησιμοποιούν και οι άλλες εφαρμογές.</p>`}
     <p id="ef-msg" class="form-msg"></p>
     <div class="dlg-foot"><button type="button" class="btn" data-close>Άκυρο</button><button class="btn primary">Αποθήκευση</button></div></form>`,
@@ -500,8 +510,12 @@ function employeeDialog(e) {
         (isNew ? $("#ef-code") : $("#ef-first")).focus();
         $("#ef").onsubmit = async (ev) => {
           ev.preventDefault();
-          const v = { code: $("#ef-code").value.trim(), first: $("#ef-first").value.trim(), last: $("#ef-last").value.trim(), store: $("#ef-store").value, company: $("#ef-company").value, status: $("#ef-status").value };
-          if ($("#ef-spec")) { v.specialty = $("#ef-spec").value || null; v.hire_date = $("#ef-hire").value || null; }
+          const v = { code: $("#ef-code").value.trim(), first: $("#ef-first").value.trim(), last: $("#ef-last").value.trim(), company: $("#ef-company").value, status: $("#ef-status").value };
+          if (isNew || S.api.mode === "demo") v.store = $("#ef-store").value;
+          if ($("#ef-spec")) {
+            Object.assign(v, { specialty: $("#ef-spec").value || null, hire_date: $("#ef-hire").value || null, email: $("#ef-email").value.trim().toLowerCase() || null, phone: $("#ef-phone").value.trim() || null });
+            if (isNew) { if (!$("#ef-ww").value) return ($("#ef-msg").textContent = "Επιλέξτε πενθήμερο ή εξαήμερο."); v.work_week = Number($("#ef-ww").value); v.weekly_hours = $("#ef-wh").value ? Number($("#ef-wh").value.replace(",", ".")) : null; }
+          }
           try { await S.api.saveEmployee(v, isNew); closeDialog(); invalidate(); toast("Αποθηκεύτηκε."); rerender(); }
           catch (err) { $("#ef-msg").textContent = err.message; }
         };
@@ -532,8 +546,9 @@ async function importEmployees(file, existing) {
     const stores = S.lists.stores.map((s) => s.name), comps = S.lists.companies.map((c) => c.name);
     const seen = new Set(), ex = new Set(existing.map((e) => e.code));
     const rows = table.slice(1).filter((r) => r.some((x) => String(x).trim())).map((r, i) => {
-      const [code, first, last, store, company, status, specialty, hire] = r.map((x) => String(x ?? "").trim());
+      const [code, first, last, store, company, status, specialty, hire, wws, whs, email, phone] = r.map((x) => String(x ?? "").trim());
       let problem = "", hire_date = null;
+      const work_week = /^πενθ/i.test(norm(wws)) ? 5 : /^εξα/i.test(norm(wws)) ? 6 : null;
       if (hasExtra && hire) { const m = hire.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/) || hire.match(/^(\d{4})-(\d{2})-(\d{2})$/); if (!m) problem = "Ημερομηνία πρόσληψης: ΗΗ/ΜΜ/ΕΕΕΕ"; else hire_date = m[1].length === 4 ? `${m[1]}-${m[2]}-${m[3]}` : `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; }
       if (hasExtra && specialty && !specs.includes(specialty)) problem = "Άγνωστη ειδικότητα";
       if (!code || !first || !last) problem = "Λείπουν στοιχεία";
@@ -541,8 +556,10 @@ async function importEmployees(file, existing) {
       else if (!stores.includes(store)) problem = "Άγνωστο κατάστημα";
       else if (!comps.includes(company)) problem = "Άγνωστη εταιρεία";
       else if (!["Ενεργός", "Ανενεργός"].includes(status)) problem = "Κατάσταση: Ενεργός ή Ανενεργός";
+      if (!problem && hasExtra && wws && !work_week) problem = "Πενθήμερο/Εξαήμερο: γράψτε «Πενθήμερο» ή «Εξαήμερο»";
+      if (!problem && S.api.mode !== "demo" && !ex.has(code) && !work_week) problem = "Νέος εργαζόμενος: λείπει «Πενθήμερο/Εξαήμερο»";
       seen.add(code);
-      return { line: i + 2, code, first, last, store, company, status, problem, isNew: !ex.has(code), ...(hasExtra ? { specialty: specialty || null, hire_date } : {}) };
+      return { line: i + 2, code, first, last, store, company, status, problem, isNew: !ex.has(code), ...(hasExtra ? { specialty: specialty || null, hire_date, work_week, weekly_hours: whs ? Number(whs.replace(",", ".")) || null : null, email: email.toLowerCase() || null, phone: phone || null } : {}) };
     });
     const ok = rows.filter((r) => !r.problem), bad = rows.filter((r) => r.problem);
     openDialog(`
@@ -555,7 +572,11 @@ async function importEmployees(file, existing) {
           $("#im-ok").onclick = async () => {
             $("#im-ok").disabled = true;
             try {
-              const n = await S.api.importEmployees(ok.map(({ code, first, last, store, company, status, specialty, hire_date }) => ({ code, first, last, store, company, status, ...(hasExtra ? { specialty, hire_date } : {}) })));
+              // Υπάρχοντες: η εισαγωγή δεν αλλάζει κατάστημα ή σύστημα εργασίας (αυτά αλλάζουν από την καρτέλα με ημερομηνία ισχύος)
+              const byCode = Object.fromEntries(existing.map((e) => [e.code, e]));
+              const n = await S.api.importEmployees(ok.map(({ code, first, last, store, company, status, specialty, hire_date, work_week, weekly_hours, email, phone, isNew }) => ({
+                code, first, last, company, status, store: isNew || S.api.mode === "demo" ? store : byCode[code].store,
+                ...(hasExtra ? { specialty, hire_date, email, phone, ...(isNew ? { work_week, weekly_hours } : { work_week: byCode[code].work_week ?? work_week ?? null, weekly_hours: byCode[code].weekly_hours ?? weekly_hours ?? null }) } : {}) })));
               closeDialog(); invalidate(); toast(`Αποθηκεύτηκαν ${n} εργαζόμενοι.`); rerender();
             } catch (err) { toast(err.message, true); $("#im-ok").disabled = false; }
           };

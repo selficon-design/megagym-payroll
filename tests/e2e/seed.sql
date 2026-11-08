@@ -4,14 +4,14 @@ grant anon, authenticated to authenticator;
 insert into app_users(email,name,role,store) values
  ('owner@test.gr','Δοκιμαστική ΓΔ','owner',null),('hr@test.gr','Δοκιμαστικό HR','hr',null),
  ('glyfada@test.gr','Manager Γλυφάδας (test)','manager','Γλυφάδα'),('kifisia@test.gr','Manager Κηφισιάς (test)','manager','Κηφισιά'),
- ('trainer@test.gr','Εκπαιδευτής (test)','trainer',null);
+ ('trainer@test.gr','Εκπαιδευτής (test)','trainer',null),('accounting@test.gr','Λογιστήριο (test)','accounting',null);
 insert into trainer_scopes(email, store, specialty) values ('trainer@test.gr', null, 'Ρεσεψιόν');
-insert into employees(code,first,last,store,company,specialty,hire_date) values
- ('T100','Ελένη','Δοκιμή','Γλυφάδα','BEST GREEK GYMS IKE','Ρεσεψιόν','2024-03-01'),
- ('T101','Σάκης','Τεστάκης','Γλυφάδα','BEST GREEK GYMS IKE','Επίβλεψη','2023-09-15'),
- ('T102','Ξένια','Υπόδειγμα','Γλυφάδα','BEST GREEK GYMS IKE','Exclusive','2025-01-10'),
- ('T200','Κώστας','Παράδειγμα','Κηφισιά','ARG BEST GREEK GYMS IKE','Ρεσεψιόν','2022-05-20'),
- ('T201','Νίκη','Χωριςειδικότητα','Γλυφάδα','BEST GREEK GYMS IKE',null,null);
+insert into employees(code,first,last,store,company,specialty,hire_date,work_week,weekly_hours) values
+ ('T100','Ελένη','Δοκιμή','Γλυφάδα','BEST GREEK GYMS IKE','Ρεσεψιόν','2024-03-01',5,40),
+ ('T101','Σάκης','Τεστάκης','Γλυφάδα','BEST GREEK GYMS IKE','Επίβλεψη','2023-09-15',5,40),
+ ('T102','Ξένια','Υπόδειγμα','Γλυφάδα','BEST GREEK GYMS IKE','Exclusive','2025-01-10',6,30),
+ ('T200','Κώστας','Παράδειγμα','Κηφισιά','ARG BEST GREEK GYMS IKE','Ρεσεψιόν','2022-05-20',5,40),
+ ('T201','Νίκη','Χωριςειδικότητα','Γλυφάδα','BEST GREEK GYMS IKE',null,null,null,null);
 -- Μισθοδοσία πριν από τις δοκιμές (για να ελεγχθεί ότι δεν επηρεάζεται)
 select set_config('request.jwt.claims','{"email":"glyfada@test.gr"}', false);
 set role authenticated;

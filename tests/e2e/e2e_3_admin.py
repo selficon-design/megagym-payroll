@@ -7,13 +7,13 @@ def login_as(pg, email, pw="test1234"):
     if pg.is_visible("#app"): pg.evaluate("localStorage.clear(); sessionStorage.clear()"); pg.goto(BASE); pg.wait_for_selector("#login-email:visible")
     pg.fill("#login-email", email); pg.fill("#login-password", pw); pg.click("#login-form button")
     pg.wait_for_selector("#app:visible, #login-msg:has-text('Λάθος'), #login-msg:has-text('κλειδωμένος')")
-    return pg.is_visible("#app")
+    pg.wait_for_load_state("networkidle"); return pg.is_visible("#app")
 with sync_playwright() as p:
     b = browser(p)
     pg = new_page(b); check(login_as(pg, "mariamaneta@megagym.gr"), "mariamaneta@megagym.gr: είσοδος")
     check("Γενική Διευθύντρια" in pg.inner_text("#me-box"), "αναγνωρίζεται ως Γενική Διευθύντρια")
     go(pg, "#/users"); pg.wait_for_timeout(600)
-    t = pg.inner_text("#view")
+    pg.wait_for_timeout(600); t = pg.inner_text("#view")
     check("διαχειρίζεται λογαριασμούς" not in t and "Τελ. είσοδος" in t, "λίστα χρηστών με κατάσταση λογαριασμών από τον server")
     # Προσθήκη χρήστη
     pg.click("#us-new"); pg.fill("#uf-name", "Νέα Δοκιμαστική HR"); pg.fill("#uf-email", "nea.hr@test.gr"); pg.select_option("#uf-role", "hr")

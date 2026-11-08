@@ -152,6 +152,7 @@ export function createDemoApi() {
     },
     async declaration(id) { const d = S.declarations.find((x) => x.id === id && canSee(x.store)); if (!d) throw new Error("Η δήλωση δεν βρέθηκε."); return wait(d); },
     async declarationsFull(ids) { return wait(S.declarations.filter((d) => ids.includes(d.id) && canSee(d.store))); },
+    async declarationPdf(id) { return this.declaration(id); },
     async prepare(month, rows) {
       const r0 = role(); if (!r0) deny();
       const b = monthBounds(month);

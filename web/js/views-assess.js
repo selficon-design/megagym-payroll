@@ -19,22 +19,24 @@ const fmtP = (v) => (v === null ? "—" : v.toLocaleString("el-GR", { maximumFra
 export async function assessments() {
   if (S.api.mode === "demo") return (view().innerHTML = demoNotice("Αξιολογήσεις"));
   if (!can.assessResults()) return assessRun(new URLSearchParams());
+  if (!can.assessFull()) return scopeResults();
   const [qs, atts] = await Promise.all([S.api.questionnaires(), S.api.attempts()]);
   view().innerHTML = `
   <div class="page-head"><div><div class="eyebrow">Αξιολογήσεις</div><h1>Ερωτηματολόγια</h1>
     <p class="muted">Ο ίδιος ο εργαζόμενος απαντά, σε απομονωμένη οθόνη. Αυτή η ενότητα είναι διαφορετική από την «αρνητική αξιολόγηση» που συντάσσει ο manager.</p></div>
-    <div class="row-actions"><button class="btn" id="as-tpl">⇩ Πρότυπο Excel</button><a class="btn" href="#/assess-reports">Αναφορές</a><a class="btn" href="#/assess-run">Έναρξη συμπλήρωσης</a>${can.assessAdmin() ? `<button class="btn primary" id="as-new">+ Νέο ερωτηματολόγιο</button>` : ""}</div></div>
+    <div class="row-actions"><button class="btn" id="as-tpl">⇩ Πρότυπο Excel</button><a class="btn" href="#/assess-reports">Αναφορές</a>${can.exit() ? `<a class="btn" href="#/exit-reports">Exit Interview — αναφορές</a>` : ""}<a class="btn" href="#/assess-run">Έναρξη συμπλήρωσης</a>${can.assessAdmin() ? `<button class="btn primary" id="as-new">+ Νέο ερωτηματολόγιο</button>` : ""}</div></div>
   <div class="card">${qs.length ? `<div class="table-wrap"><table class="stack"><thead><tr><th>Τίτλος</th><th>Ειδικότητες</th><th>Διαθεσιμότητα (ώρα Ελλάδας)</th><th class="r">Υποβολές</th><th>Κατάσταση</th></tr></thead><tbody>
-    ${qs.map((q) => { const a = atts.filter((x) => x.questionnaire_id === q.id); return `<tr class="click" data-q="${h(q.id)}"><td><strong>${h(q.title)}</strong>${q.description ? `<span class="sub">${h(q.description.slice(0, 90))}</span>` : ""}</td>
+    ${qs.map((q) => { const a = atts.filter((x) => x.questionnaire_id === q.id); return `<tr class="click" data-q="${h(q.id)}"><td><strong>${h(q.title)}</strong>${q.kind === "exit_interview" ? ` <span class="badge b-info">Exit Interview</span>` : ""}${q.description ? `<span class="sub">${h(q.description.slice(0, 90))}</span>` : ""}</td>
       <td class="small">${h(q.specialties.join(", ") || "—")}</td><td class="small">${q.starts_at ? `${athens(q.starts_at)} → ${athens(q.ends_at)}` : "—"}</td>
       <td class="r num">${a.filter((x) => x.status !== "in_progress").length}${a.some((x) => x.status === "pending_manual") ? ` <span class="badge b-pending">βαθμολόγηση</span>` : ""}</td><td>${qBadge(q.status)}</td></tr>`; }).join("")}
     </tbody></table></div>` : `<div class="empty"><div class="big">☑︎</div>Δεν υπάρχουν ερωτηματολόγια ακόμη.</div>`}</div>`;
   $$("tr.click").forEach((tr) => (tr.onclick = () => (location.hash = `#/assessment?id=${tr.dataset.q}`)));
   $("#as-tpl").onclick = downloadTemplate;
   $("#as-new") && ($("#as-new").onclick = () => openDialog(`<div class="dlg-head"><h2>Νέο ερωτηματολόγιο</h2><button class="icon-btn" data-close>✕</button></div>
+    <label>Είδος</label><select id="nq-k"><option value="assessment">Αξιολόγηση (με βαθμολογία)</option><option value="exit_interview">Exit Interview (χωρίς βαθμό· περιεχόμενο μόνο ΓΔ, HR, εκπαιδευτής)</option></select>
     <label>Τίτλος</label><input id="nq-t" maxlength="200"><label>Περιγραφή</label><textarea id="nq-d" rows="3" maxlength="2000"></textarea><p id="nq-m" class="form-msg"></p>
     <div class="dlg-foot"><button class="btn" data-close>Άκυρο</button><button class="btn primary" id="nq-ok">Δημιουργία (πρόχειρο)</button></div>`, {
-    onOpen() { $("#nq-ok").onclick = async () => { try { const r = await S.api.qCreate($("#nq-t").value, $("#nq-d").value); closeDialog(); location.hash = `#/assessment?id=${r.id}&tab=questions`; } catch (e) { $("#nq-m").textContent = e.message; } }; },
+    onOpen() { $("#nq-ok").onclick = async () => { try { const r = await S.api.qCreate($("#nq-t").value, $("#nq-d").value, $("#nq-k").value); closeDialog(); location.hash = `#/assessment?id=${r.id}&tab=questions`; } catch (e) { $("#nq-m").textContent = e.message; } }; },
   }));
 }
 
@@ -85,16 +87,18 @@ async function readQuestions(file) {
 // ═══════════════════════ Ερωτηματολόγιο (ΓΔ / HR) ═══════════════════════
 export async function assessmentView(params) {
   if (S.api.mode === "demo") return (view().innerHTML = demoNotice("Αξιολογήσεις"));
-  if (!can.assessResults()) return (view().innerHTML = `<div class="card empty">Μόνο για Γενική Διευθύντρια και HR.</div>`);
+  if (!can.assessFull()) return (view().innerHTML = `<div class="card empty">Δεν έχετε πρόσβαση στη διαχείριση ερωτηματολογίων.</div>`);
   const id = params.get("id"), tab = params.get("tab") || "settings";
   const q = await S.api.questionnaire(id);
   const latest = q.versions[0], current = q.versions.find((v) => v.id === q.current_version_id);
   const admin = can.assessAdmin();
+  const exitQ = q.kind === "exit_interview";
   view().innerHTML = `
-  <div class="page-head"><div><div class="eyebrow">Ερωτηματολόγιο ${current ? `· ενεργή έκδοση ${current.version}` : ""}${latest?.status === "draft" && current ? ` · πρόχειρη έκδοση ${latest.version}` : ""}</div><h1>${h(q.title)}</h1>
+  <div class="page-head"><div><div class="eyebrow">Ερωτηματολόγιο ${current ? `· ενεργή έκδοση ${current.version}` : ""}${latest?.status === "draft" && current ? ` · πρόχειρη έκδοση ${latest.version}` : ""}</div><h1>${h(q.title)}${exitQ ? ` <span class="badge b-info">Exit Interview</span>` : ""}</h1>
     <p class="muted">${qBadge(q.status)} ${q.starts_at ? `Διαθέσιμο ${athens(q.starts_at)} → ${athens(q.ends_at)} (ώρα Ελλάδας)` : "Χωρίς διάστημα διαθεσιμότητας"}</p></div>
     <a class="btn" href="#/assessments">← Ερωτηματολόγια</a></div>
-  <div class="tabs">${[["settings", "Ρυθμίσεις & διαθεσιμότητα"], ["questions", "Ερωτήσεις"], ...(admin ? [["keys", "Σωστές απαντήσεις"], ["links", "Προσωπικοί σύνδεσμοι"]] : []), ["results", "Αποτελέσματα"], ...(admin ? [["examples", "Παραδείγματα βαθμολόγησης"], ["evals", "Αξιολογήσεις AI"]] : [])].map(([k, l]) => `<a href="#/assessment?id=${id}&tab=${k}" class="${k === tab ? "on" : ""}">${l}</a>`).join("")}</div>
+  ${exitQ ? `<div class="note" style="margin-bottom:12px">Exit Interview: χωρίς σωστές απαντήσεις και βαθμό. Το περιεχόμενο και οι αναφορές είναι διαθέσιμα μόνο σε ΓΔ, HR και εκπαιδευτή· ο manager μπορεί να ανοίξει τον σύνδεσμο αλλά δεν βλέπει τις απαντήσεις. Η αποχώρηση δεν ακυρώνει ενεργή ανάθεση μέσα στην προθεσμία. <a href="#/exit-reports">Αναφορές λόγων αποχώρησης →</a></div>` : ""}
+  <div class="tabs">${[["settings", "Ρυθμίσεις & διαθεσιμότητα"], ["questions", "Ερωτήσεις"], ...(admin && !exitQ ? [["keys", "Σωστές απαντήσεις"]] : []), ...(admin ? [["links", "Προσωπικοί σύνδεσμοι"]] : []), ["results", exitQ ? "Υποβολές" : "Αποτελέσματα"], ...(admin && !exitQ ? [["examples", "Παραδείγματα βαθμολόγησης"], ["evals", "Αξιολογήσεις AI"]] : [])].map(([k, l]) => `<a href="#/assessment?id=${id}&tab=${k}" class="${k === tab ? "on" : ""}">${l}</a>`).join("")}</div>
   <div id="qa-body"></div>`;
   const body = $("#qa-body");
   const reload = () => { invalidate(); assessmentView(params); };
@@ -240,17 +244,16 @@ async function resultsTab(q, body) {
   $$("[data-att]", body).forEach((tr) => (tr.onclick = () => attemptDialog(tr.dataset.att)));
 }
 
-/** Αναλυτικές απαντήσεις, βαθμοί ανά ερώτηση/ενότητα και χειροκίνητη βαθμολόγηση (ΓΔ, HR). */
+/** Αναλυτικές απαντήσεις, βαθμοί ανά ερώτηση/ενότητα και χειροκίνητη βαθμολόγηση.
+ *  Ο server (attempt_view) αποφασίζει τι επιστρέφεται: πεδίο καταστημάτων, Exit Interview μόνο ΓΔ/HR/εκπαιδευτής,
+ *  σωστές επιλογές μόνο σε όσους διαχειρίζονται/βαθμολογούν. */
 export async function attemptDialog(attemptId) {
-  const atts = await S.api.attempts();
-  const a = atts.find((x) => x.id === attemptId);
-  if (!a) return toast("Δεν βρέθηκε.", true);
-  const [qs, ans, q] = await Promise.all([S.api.questions(a.version_id), S.api.attemptAnswers(a.id), S.api.questionnaire(a.questionnaire_id)]);
-  const ver = q.versions.find((v) => v.id === a.version_id);
-  const A = Object.fromEntries(ans.map((x) => [x.question_id, x]));
-  const shown = qs.filter((x) => !x.specialty || x.specialty === a.specialty);
+  let V;
+  try { V = await S.api.attemptView(attemptId); } catch (e) { return toast(e.message, true); }
+  const a = V.attempt, qq = V.questionnaire, exitQ = qq.kind === "exit_interview";
+  const shown = V.questions;
   const sections = {};
-  for (const x of shown) { const s = (sections[x.section] ??= { got: 0, max: 0, pending: false }); const y = A[x.id]; if (y?.max_points) { s.max += Number(y.max_points); if (y.needs_manual && !y.graded_at) s.pending = true; else s.got += Number(y.points || 0); } }
+  for (const x of shown) { const s = (sections[x.section] ??= { got: 0, max: 0, pending: false }); if (x.max_points) { s.max += Number(x.max_points); if (x.needs_manual && !x.graded_at) s.pending = true; else s.got += Number(x.points || 0); } }
   const fmtAns = (x, v) => {
     if (v === undefined || v === null) return `<span class="muted">— χωρίς απάντηση</span>`;
     if (x.qtype === "single") return h(`${v}. ${x.options.find((o) => o.key === v)?.label || ""}`);
@@ -259,18 +262,19 @@ export async function attemptDialog(attemptId) {
     return `<span style="white-space:pre-wrap">${h(v)}</span>`;
   };
   const inProgress = a.status === "in_progress";
-  openDialog(`<div class="dlg-head"><div><div class="eyebrow">${h(q.title)} · έκδοση ${ver?.version}</div><h2>${h(a.employee_name)}</h2>
-      <p class="muted small">${h(a.store)} · ${h(a.specialty)} (κατά τη συμπλήρωση) · ${a.opened_role === "link" ? "προσωπικός σύνδεσμος" : `άνοιξε ${h(a.opened_by)}`} · έναρξη ${athens(a.started_at)}${a.submitted_at ? ` · υποβολή ${athens(a.submitted_at)}` : ""}</p></div><button class="icon-btn" data-close>✕</button></div>
-    ${inProgress ? `<div class="note warn">Δεν έχει υποβληθεί οριστικά. Οι προσωρινές απαντήσεις δεν θεωρούνται ολοκληρωμένη αξιολόγηση και δεν βαθμολογούνται.</div>` : `
-    <div class="grid g3" style="margin-top:12px"><div class="card kpi"><div class="label">Συνολικό</div><div class="value num">${a.max_score ? `${num(a.score)} / ${num(a.max_score)}` : "—"}</div><div class="hint">${a.max_score ? fmtP(pctOf(a)) : "χωρίς έγκυρο κανόνα βαθμολόγησης"}${a.status === "pending_manual" ? " · αναμένει χειροκίνητη βαθμολόγηση" : ""}</div></div>
+  const pctA = a.max_score ? (100 * a.score) / a.max_score : null;
+  openDialog(`<div class="dlg-head"><div><div class="eyebrow">${h(qq.title)} · έκδοση ${a.version}${exitQ ? " · Exit Interview" : ""}</div><h2>${h(a.employee_name)}</h2>
+      <p class="muted small">${h(a.store)} · ${h(a.specialty || "—")} (κατά τη συμπλήρωση) · ${a.opened_role === "link" ? "προσωπικός σύνδεσμος" : `άνοιξε ${h(a.opened_by)}`} · έναρξη ${athens(a.started_at)}${a.submitted_at ? ` · υποβολή ${athens(a.submitted_at)}` : ""}</p></div><button class="icon-btn" data-close>✕</button></div>
+    ${inProgress ? `<div class="note warn">Δεν έχει υποβληθεί οριστικά. Οι προσωρινές απαντήσεις δεν θεωρούνται ολοκληρωμένη αξιολόγηση και δεν βαθμολογούνται.</div>` : exitQ ? `<div class="note">Exit Interview — χωρίς βαθμό επιτυχίας/αποτυχίας.</div>` : `
+    <div class="grid g3" style="margin-top:12px"><div class="card kpi"><div class="label">Συνολικό</div><div class="value num">${a.max_score ? `${num(a.score)} / ${num(a.max_score)}` : "—"}</div><div class="hint">${a.max_score ? fmtP(pctA) : "χωρίς έγκυρο κανόνα βαθμολόγησης"}${a.status === "pending_manual" ? " · αναμένει χειροκίνητη βαθμολόγηση" : ""}</div></div>
       <div class="card" style="grid-column:span 2"><div class="label muted small">Ανά ενότητα</div>${Object.entries(sections).map(([s, v]) => `<div class="small">${h(s)}: <strong>${v.max ? (v.pending ? "αναμένει βαθμολόγηση" : `${num(v.got)} / ${num(v.max)}`) : "χωρίς βαθμολογία (π.χ. αυτοαξιολόγηση)"}</strong></div>`).join("")}</div></div>`}
-    <div class="table-wrap" style="margin-top:14px;max-height:55vh"><table><thead><tr><th>Ερώτηση</th><th>Απάντηση</th><th>Σωστή</th><th class="r">Βαθμοί</th></tr></thead><tbody>
-    ${shown.map((x) => { const y = A[x.id]; const v = inProgress ? undefined : y?.answer; return `<tr><td class="small"><span class="muted">${h(x.section)}</span><br>${h(x.text)}</td><td class="small">${inProgress ? `<span class="muted">—</span>` : fmtAns(x, v)}</td>
-      <td class="small">${x.correct?.length ? h(x.correct.join(",")) + (y?.is_correct === true ? " ✓" : y?.is_correct === false ? " ✗" : "") : x.qtype === "scale" && !x.points ? "αυτοαξιολόγηση" : x.qtype === "text" && x.model_answer ? `<span class="key-model" title="Πρότυπη απάντηση">${h(x.model_answer)}</span>` : "—"}</td>
-      <td class="r num">${!y?.max_points ? "—" : y.needs_manual && !y.graded_at ? `<input class="grade" data-q="${x.id}" inputmode="decimal" placeholder="0–${num(y.max_points)}" style="width:80px">` : `${num(y.points)} / ${num(y.max_points)}${y.graded_by ? `<span class="sub">${h(y.graded_by)}</span>` : ""}`}</td></tr>`; }).join("")}
+    <div class="table-wrap" style="margin-top:14px;max-height:55vh"><table><thead><tr><th>Ερώτηση</th><th>Απάντηση</th>${exitQ ? "" : `<th>Σωστή</th><th class="r">Βαθμοί</th>`}</tr></thead><tbody>
+    ${shown.map((x) => { const v = inProgress ? undefined : x.answer; return `<tr><td class="small"><span class="muted">${h(x.section)}</span><br>${h(x.text)}</td><td class="small">${inProgress ? `<span class="muted">—</span>` : fmtAns(x, v)}</td>
+      ${exitQ ? "" : `<td class="small">${x.correct?.length ? h(x.correct.join(",")) + (x.is_correct === true ? " ✓" : x.is_correct === false ? " ✗" : "") : x.is_correct === true ? "✓ σωστή" : x.is_correct === false ? "✗ λάθος" : x.qtype === "scale" && !x.max_points ? "αυτοαξιολόγηση" : x.model_answer ? `<span class="key-model" title="Πρότυπη απάντηση">${h(x.model_answer)}</span>` : "—"}</td>
+      <td class="r num">${!x.max_points ? "—" : x.needs_manual && !x.graded_at ? (V.can_grade ? `<input class="grade" data-q="${x.id}" inputmode="decimal" placeholder="0–${num(x.max_points)}" style="width:80px">` : "αναμένει") : `${num(x.points)} / ${num(x.max_points)}`}</td>`}</tr>`; }).join("")}
     </tbody></table></div>
     <p id="ad-m" class="form-msg"></p>
-    <div class="dlg-foot"><button class="btn" data-close>Κλείσιμο</button>${ans.some((y) => y.needs_manual && !y.graded_at) ? `<button class="btn primary" id="ad-grade">Αποθήκευση βαθμών</button>` : ""}</div>`, {
+    <div class="dlg-foot"><button class="btn" data-close>Κλείσιμο</button>${V.can_grade && shown.some((x) => x.needs_manual && !x.graded_at) ? `<button class="btn primary" id="ad-grade">Αποθήκευση βαθμών</button>` : ""}</div>`, {
     wide: true,
     onOpen() {
       $("#ad-grade") && ($("#ad-grade").onclick = async () => {
@@ -281,6 +285,66 @@ export async function attemptDialog(attemptId) {
       });
     },
   });
+}
+
+// ═══════════════════════ Αποτελέσματα στο πεδίο του χρήστη (manager: κατάστημα, εκπαιδευτής: όλα) ═══════════════════════
+async function scopeResults() {
+  const F = (S.filters.scopeRes ??= { q: "", search: "", store: "" });
+  const [qs, rows0] = await Promise.all([S.api.assessQuestionnaires(), S.api.assessResults(F.q || null, null)]);
+  const rows = rows0.filter((r) => (!F.search || norm(`${r.employee_name} ${r.employee_code}`).includes(norm(F.search))) && (!F.store || r.store === F.store));
+  view().innerHTML = `
+  <div class="page-head"><div><div class="eyebrow">Αξιολογήσεις</div><h1>Αποτελέσματα αξιολογήσεων</h1>
+    <p class="muted">Απαντήσεις και βαθμολογία κανονικών αξιολογήσεων${role() === "manager" ? ` για το κατάστημα ${h(S.me.store)}` : " σε όλα τα καταστήματα"}. Οι βαθμοί συγκρίνονται μόνο μέσα στην ίδια έκδοση.</p></div>
+    <div class="row-actions">${can.exit() ? `<a class="btn" href="#/exit-reports">Exit Interview — αναφορές</a>` : ""}${can.assessOpen() ? `<a class="btn primary" href="#/assess-run">Έναρξη συμπλήρωσης</a>` : ""}</div></div>
+  <div class="card"><div class="toolbar">
+    <select id="sr-q"><option value="">Όλα τα ερωτηματολόγια</option>${qs.map((q) => `<option value="${q.id}" ${q.id === F.q ? "selected" : ""}>${h(q.title)}${q.kind === "exit_interview" ? " (Exit Interview)" : ""}</option>`).join("")}</select>
+    ${role() === "manager" ? "" : `<select id="sr-store"><option value="">Όλα τα καταστήματα</option>${visibleStores().map((s) => `<option ${s === F.store ? "selected" : ""}>${h(s)}</option>`).join("")}</select>`}
+    <input type="search" id="sr-s" placeholder="Εργαζόμενος" value="${h(F.search)}"></div>
+  ${rows.length ? `<div class="table-wrap"><table class="stack"><thead><tr><th>Εργαζόμενος</th><th>Ερωτηματολόγιο</th><th>Κατάστημα · Ειδικότητα</th><th>Υποβολή</th><th>Κατάσταση</th><th class="r">Αποτέλεσμα</th></tr></thead><tbody>
+    ${rows.map((r) => `<tr class="click" data-att="${h(r.attempt_id)}"><td><strong>${h(r.employee_name)}</strong><span class="sub">${h(r.employee_code)}</span></td><td class="small">${h(r.title)} · v${r.version}${r.kind === "exit_interview" ? ` <span class="badge b-info">Exit</span>` : ""}</td>
+      <td class="small">${h(r.store)} · ${h(r.specialty || "—")}</td><td class="small">${r.submitted_at ? athens(r.submitted_at) : "—"}</td><td>${attemptBadge(r.state)}</td>
+      <td class="r num">${r.max_score ? `${num(r.score)} / ${num(r.max_score)}<span class="sub">${fmtP((100 * r.score) / r.max_score)}</span>` : "—"}</td></tr>`).join("")}
+  </tbody></table></div>` : `<div class="empty">Δεν υπάρχουν αξιολογήσεις στο πεδίο σας.</div>`}</div>`;
+  $("#sr-q").onchange = (e) => { F.q = e.target.value; scopeResults(); };
+  $("#sr-store") && ($("#sr-store").onchange = (e) => { F.store = e.target.value; scopeResults(); });
+  $("#sr-s").oninput = (e) => { F.search = e.target.value; scopeResults().then(() => { const i = $("#sr-s"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }); };
+  $$("[data-att]").forEach((tr) => (tr.onclick = () => attemptDialog(tr.dataset.att)));
+}
+
+// ═══════════════════════ Exit Interview: αναφορές (ΜΟΝΟ ΓΔ, HR, εκπαιδευτής) ═══════════════════════
+export async function exitReports() {
+  if (S.api.mode === "demo") return (view().innerHTML = demoNotice("Exit Interview"));
+  if (!can.exit()) return (view().innerHTML = `<div class="card empty">Οι αναφορές Exit Interview είναι διαθέσιμες μόνο σε ΓΔ, HR και εκπαιδευτή.</div>`);
+  const F = (S.filters.exitRep ??= { q: "", from: "", to: "" });
+  const qs = (await S.api.assessQuestionnaires()).filter((q) => q.kind === "exit_interview");
+  const R = await S.api.exitReport(F.q || null, F.from || null, F.to || null);
+  const subs = R.submissions || [];
+  const byStore = {}; for (const x of subs) byStore[x.store] = (byStore[x.store] || 0) + 1;
+  view().innerHTML = `
+  <div class="page-head"><div><div class="eyebrow">Αξιολογήσεις · Exit Interview</div><h1>Λόγοι αποχώρησης & ευρήματα</h1>
+    <p class="muted">Συγκεντρωτικά από τις υποβληθείσες συνεντεύξεις αποχώρησης. Χωρίς βαθμό επιτυχίας/αποτυχίας. Διαθέσιμο μόνο σε ΓΔ, HR και εκπαιδευτή.</p></div>
+    <a class="btn" href="#/assessments">← Αξιολογήσεις</a></div>
+  <div class="card"><div class="toolbar">
+    <select id="xr-q"><option value="">Όλα τα Exit Interview</option>${qs.map((q) => `<option value="${q.id}" ${q.id === F.q ? "selected" : ""}>${h(q.title)}</option>`).join("")}</select>
+    <label class="small muted" style="margin:0;display:flex;gap:6px;align-items:center">Από <input type="date" id="xr-from" value="${F.from}" style="width:auto"></label>
+    <label class="small muted" style="margin:0;display:flex;gap:6px;align-items:center">Έως <input type="date" id="xr-to" value="${F.to}" style="width:auto"></label>
+    <span class="muted small">${subs.length} υποβολές${Object.keys(byStore).length ? " · " + Object.entries(byStore).map(([k, v]) => `${h(k)}: ${v}`).join(" · ") : ""}</span></div>
+    ${(R.questions || []).map((q) => {
+      const total = Object.values(q.counts || {}).reduce((a, b) => a + b, 0);
+      return `<div class="xr-q"><h4>${h(q.text)} <span class="muted small">${h(q.section)}${qs.length > 1 && !F.q ? " · " + h(q.title) : ""}</span></h4>
+        ${["single", "multi"].includes(q.qtype) ? q.options.map((o) => { const n = q.counts?.[o.key] || 0; const pc = total ? Math.round((100 * n) / total) : 0; return `<div class="xr-bar"><span class="lbl">${h(o.key)}. ${h(o.label)}</span><span class="track"><i style="width:${pc}%"></i></span><span class="num">${n}${total ? ` (${pc}%)` : ""}</span></div>`; }).join("")
+        : q.qtype === "scale" ? `<p class="small">Μέσος όρος: <strong>${q.scale_avg ?? "—"}</strong></p>`
+        : (q.texts || []).length ? `<div class="xr-texts">${q.texts.map((t) => `<div class="statement small">${h(t.text)}<div class="muted">${h(t.employee_name)} · ${h(t.store)} · ${athens(t.submitted_at)}</div></div>`).join("")}</div>` : `<p class="muted small">Καμία απάντηση.</p>`}</div>`;
+    }).join("") || `<div class="empty">Δεν υπάρχουν υποβολές ακόμη.</div>`}
+  </div>
+  ${subs.length ? `<div class="card" style="margin-top:16px"><h3>Υποβολές</h3><div class="table-wrap"><table><thead><tr><th>Εργαζόμενος</th><th>Κατάστημα</th><th>Αποχώρηση</th><th>Υποβολή</th></tr></thead><tbody>
+    ${subs.map((x) => `<tr class="click" data-att="${h(x.attempt_id)}"><td><strong>${h(x.employee_name)}</strong><span class="sub">${h(x.employee_code)}</span></td><td>${h(x.store)}</td><td>${x.leave_date ? x.leave_date.split("-").reverse().join("/") : "—"}</td><td class="small">${athens(x.submitted_at)}</td></tr>`).join("")}
+  </tbody></table></div></div>` : ""}`;
+  const re = () => exitReports();
+  $("#xr-q").onchange = (e) => { F.q = e.target.value; re(); };
+  $("#xr-from").onchange = (e) => { F.from = e.target.value; re(); };
+  $("#xr-to").onchange = (e) => { F.to = e.target.value; re(); };
+  $$("[data-att]").forEach((tr) => (tr.onclick = () => attemptDialog(tr.dataset.att)));
 }
 
 // ═══════════════════════ Έναρξη συμπλήρωσης (manager, εκπαιδευτής, HR, ΓΔ) ═══════════════════════
@@ -319,7 +383,7 @@ export async function assessRun(params) {
 // ═══════════════════════ Αναφορές αξιολογήσεων (ΓΔ, HR) ═══════════════════════
 export async function assessReports() {
   if (S.api.mode === "demo") return (view().innerHTML = demoNotice("Αξιολογήσεις"));
-  if (!can.assessResults()) return (view().innerHTML = `<div class="card empty">Μόνο για Γενική Διευθύντρια και HR.</div>`);
+  if (!can.assessFull()) return (view().innerHTML = `<div class="card empty">Δεν έχετε πρόσβαση στις αναλυτικές αναφορές.</div>`);
   const F = (S.filters.assessRep ??= { q: "", ver: "", store: "", spec: "", search: "", from: "", to: "", state: "", group: "store" });
   const [qs, vers, atts] = await Promise.all([S.api.questionnaires(), S.api.versionsAll(), S.api.attempts()]);
   const qT = Object.fromEntries(qs.map((q) => [q.id, q])), vN = Object.fromEntries(vers.map((v) => [v.id, v.version]));
@@ -474,7 +538,8 @@ function createLinksDialog(q, links, emps, atts, reload) {
   const openLink = new Set(links.filter((l) => !DONE.includes(l.state) && l.state !== "cancelled").map((l) => l.employee_code));
   const done = new Set(atts.filter((a) => a.status !== "in_progress").map((a) => a.employee_code));
   const pre = q.participants ? new Set(q.participants) : null;
-  const eligible = emps.filter((e) => e.status === "Ενεργός" && q.specialties.includes(e.specialty)).sort((a, b) => (a.store + a.last + a.first).localeCompare(b.store + b.last + b.first, "el"));
+  // Exit Interview: και εργαζόμενοι που αποχωρούν/αποχώρησαν, όλων των ειδικοτήτων
+  const eligible = emps.filter((e) => q.kind === "exit_interview" ? (e.leave_date || e.status === "Ενεργός") : e.status === "Ενεργός" && q.specialties.includes(e.specialty)).sort((a, b) => (a.store + a.last + a.first).localeCompare(b.store + b.last + b.first, "el"));
   const stores = [...new Set(eligible.map((e) => e.store))];
   const future = q.ends_at && new Date(q.ends_at) > new Date();
   openDialog(`<div class="dlg-head"><div><div class="eyebrow">${h(q.title)}</div><h2>Δημιουργία προσωπικών συνδέσμων</h2></div><button class="icon-btn" data-close>✕</button></div>

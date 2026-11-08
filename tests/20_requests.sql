@@ -6,10 +6,10 @@ insert into app_users(email,name,role,store) values
  ('glyfada@x.gr','Manager Γλυφάδας','manager','Γλυφάδα'),('kifisia@x.gr','Manager Κηφισιάς','manager','Κηφισιά'),
  ('trainer@x.gr','Εκπαιδευτής','trainer',null);
 insert into trainer_scopes(email, store, specialty) values ('trainer@x.gr','Γλυφάδα','Ρεσεψιόν');
-insert into employees(code,first,last,store,company,specialty) values
- ('E1','Νίκος','Αλεξίου','Γλυφάδα','BEST GREEK GYMS IKE','Ρεσεψιόν'),
- ('E2','Μαρία','Βλάχου','Γλυφάδα','BEST GREEK GYMS IKE','Επίβλεψη'),
- ('E3','Γιώργος','Γεωργίου','Κηφισιά','ARG BEST GREEK GYMS IKE','Exclusive');
+insert into employees(code,first,last,store,company,specialty,work_week) values
+ ('E1','Νίκος','Αλεξίου','Γλυφάδα','BEST GREEK GYMS IKE','Ρεσεψιόν',5),
+ ('E2','Μαρία','Βλάχου','Γλυφάδα','BEST GREEK GYMS IKE','Επίβλεψη',5),
+ ('E3','Γιώργος','Γεωργίου','Κηφισιά','ARG BEST GREEK GYMS IKE','Exclusive',6);
 insert into employees(code,first,last,store,company,status) values ('E4','Άννα','Δήμου','Κηφισιά','ARG BEST GREEK GYMS IKE','Ανενεργός');
 
 create or replace function pg_temp.as_user(e text) returns void language plpgsql as $$
@@ -46,9 +46,13 @@ select pg_temp.expect_fail(format('select req_assign(%L, null, 3)', :'leave1'), 
 
 select pg_temp.as_user('trainer@x.gr');
 select pg_temp.eq((select count(*) from hr_requests), 0::bigint, 'εκπαιδευτής δεν βλέπει αιτήματα');
-select pg_temp.eq((select count(*) from employees), 0::bigint, 'εκπαιδευτής δεν βλέπει μητρώο εργαζομένων');
+-- Έκδοση 3 (ενότητα 17): ο εκπαιδευτής βλέπει τα βασικά στοιχεία σε όλα τα καταστήματα — όχι μισθοδοσία/αιτήματα
+select pg_temp.eq((select count(*) from employees), (select count(*) from (select 1 from trainer_employees()) x), 'εκπαιδευτής: βασικά στοιχεία εργαζομένων όλων των καταστημάτων');
 select pg_temp.eq((select count(*) from declarations), 0::bigint, 'εκπαιδευτής δεν βλέπει μισθοδοσία');
-select pg_temp.eq((select count(*) from trainer_employees()), 1::bigint, 'εκπαιδευτής βλέπει μόνο το πεδίο του (Γλυφάδα·Ρεσεψιόν)');
+select pg_temp.eq((select count(*) > 1 from trainer_employees()), true, 'εκπαιδευτής: πεδίο «όλα τα καταστήματα» (προεπιλογή)');
+reset role; update role_scopes set scope = 'assigned' where role = 'trainer'; select pg_temp.as_user('trainer@x.gr');
+select pg_temp.eq((select count(*) from trainer_employees()), 1::bigint, 'πεδίο «ανά χρήστη»: μόνο Γλυφάδα·Ρεσεψιόν');
+reset role; update role_scopes set scope = 'all' where role = 'trainer'; select pg_temp.as_user('trainer@x.gr');
 select pg_temp.expect_fail($$select req_create('{"category":"leave","employee_code":"E1","entry_mode":"manager_record"}')$$, 'εκπαιδευτής δεν δημιουργεί αιτήματα');
 select pg_temp.expect_fail($$select prepare_declarations('2026-10','[{"code":"E1","amount":"1"}]')$$, 'εκπαιδευτής δεν προετοιμάζει δηλώσεις');
 
@@ -78,8 +82,12 @@ select pg_temp.eq((select count(*) from hr_decisions where request_id = :'leave1
 select pg_temp.expect_fail(format($$select req_complete(%L,'έγινε',%s)$$, :'leave1', pg_temp.ver(:'leave1')), 'manager δεν ολοκληρώνει');
 select req_mark_notified(:'leave1', null, 'Ενημερώθηκε προφορικά', pg_temp.ver(:'leave1'));
 select pg_temp.eq((select notified_by from hr_requests where id = :'leave1'), 'glyfada@x.gr', 'καταγράφεται πότε/ποιος ενημέρωσε τον εργαζόμενο');
+-- Έκδοση 3 (ενότητα 13): την υλοποίηση αναλαμβάνει και ολοκληρώνει ο manager — όχι HR/ΓΔ
 select pg_temp.as_user('hr@x.gr');
-select req_complete(:'leave1', 'Ενημερώθηκε το πρόγραμμα', pg_temp.ver(:'leave1'));
+select pg_temp.expect_fail(format($$select req_complete(%L,'Ενημερώθηκε το πρόγραμμα',%s)$$, :'leave1', pg_temp.ver(:'leave1')), 'HR δεν ολοκληρώνει υλοποίηση');
+select pg_temp.as_user('glyfada@x.gr');
+select req_impl_claim(:'leave1', pg_temp.ver(:'leave1'));
+select req_impl_complete(:'leave1', 'Ενημερώθηκε το πρόγραμμα', null, pg_temp.ver(:'leave1'));
 select pg_temp.eq((select status from hr_requests where id = :'leave1'), 'completed', 'έγκριση ≠ υλοποίηση: ολοκληρώθηκε χωριστά');
 select pg_temp.expect_fail(format($$select req_decide(%L,'reject','{"message":"xxxxxxxxxxxxxx","reason_code":"other","reason_text":"xxxxxxxxxxxxx"}',%s)$$, :'leave1', pg_temp.ver(:'leave1')), 'ολοκληρωμένο δεν ξαναποφασίζεται');
 

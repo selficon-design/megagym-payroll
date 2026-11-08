@@ -19,3 +19,4 @@ export function createClient(url, key, opts = {}) {
   };
   return c;
 }
+export class SupabaseClient {} // μόνο τύπος στον κώδικα Deno

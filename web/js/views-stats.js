@@ -106,7 +106,7 @@ async function historyDialog(id) {
 // ═══════════════════════ Αναφορές διαστήματος ═══════════════════════
 export async function statsReport(params) {
   if (S.api.mode === "demo") return (view().innerHTML = demoNotice("Αναφορές στατιστικών"));
-  if (!can.statsReports()) return (view().innerHTML = `<div class="card empty">Οι αναφορές είναι για τη Γενική Διευθύντρια και το HR.</div>`);
+  if (!can.statsReports()) return (view().innerHTML = `<div class="card empty">Δεν έχετε πρόσβαση στις αναφορές στατιστικών.</div>`);
   const today = athensToday();
   const F = (S.filters.statsRep ??= { from: today.slice(0, 8) + "01", to: today, store: "", kind: "reception", tab: "emp", metric: "conv" });
   if (F.to < F.from) F.to = F.from;
@@ -137,7 +137,7 @@ export async function statsReport(params) {
     const people = [...new Set(rows.map((r) => r.employee_code))];
     const by = Object.fromEntries(rows.map((r) => [`${r.employee_code}|${r.stat_date}`, r]));
     const shownDays = days.slice(-62);
-    content = `${days.length > 62 ? `<p class="note" style="margin-bottom:10px">Εμφανίζονται οι τελευταίες 62 ημέρες· το Excel περιέχει όλες.</p>` : ""}
+    content = `${days.length > 62 ? `<p class="note" style="margin-bottom:10px">Εμφανίζονται οι τελευταίες 62 ημέρες${can.statsExport() ? "· το Excel περιέχει όλες" : ""}.</p>` : ""}
       <p class="muted small" style="margin-bottom:10px"><span class="cell-missing">·</span> = χωρίς καταχώριση (διαφορετικό από το 0). Τιμή κελιού: ${F.kind === "exclusive" ? "Δοκιμαστικά / Εγγραφές" : "Ενημερώσεις / Εγγραφές (DR+CB)"}.</p>
       <div class="table-wrap"><table class="daily"><thead><tr><th>Εργαζόμενος</th>${shownDays.map((d) => `<th class="r">${d.slice(8)}/${d.slice(5, 7)}</th>`).join("")}</tr></thead><tbody>
       ${people.map((p) => `<tr><td>${h(name(p))}</td>${shownDays.map((d) => { const r = by[`${p}|${d}`]; return r ? `<td class="r num">${F.kind === "exclusive" ? `${r.trials_done}/${r.enr_from_trials}` : `${r.informed}/${r.dr + r.cb}`}</td>` : `<td class="r cell-missing">·</td>`; }).join("")}</tr>`).join("")}
@@ -155,12 +155,12 @@ export async function statsReport(params) {
   view().innerHTML = `
   <div class="page-head"><div><div class="eyebrow">Στατιστικά</div><h1>Αναφορές διαστήματος</h1>
     <p class="muted">Από ${dmy(F.from)} έως και ${dmy(F.to)} (${days.length} ημέρες). Τα ποσοστά υπολογίζονται από τα αθροίσματα, όχι ως μέσος όρος ημερήσιων ποσοστών. Δεν υπάρχουν στόχοι ή συνολική βαθμολογία.</p></div>
-    <div class="row-actions">${can.statsEntry() ? `<a class="btn" href="#/stats-entry">Καταχώριση</a>` : ""}<button class="btn" id="sr-xlsx">⇩ Excel</button></div></div>
+    <div class="row-actions">${can.statsEntry() ? `<a class="btn" href="#/stats-entry">Καταχώριση</a>` : ""}${can.statsExport() ? `<button class="btn" id="sr-xlsx">⇩ Excel</button>` : ""}</div></div>
   <div class="card">
     <div class="toolbar">
       <label class="small muted" style="margin:0;display:flex;gap:6px;align-items:center">Από <input type="date" id="sr-from" value="${F.from}" style="width:auto"></label>
       <label class="small muted" style="margin:0;display:flex;gap:6px;align-items:center">Έως <input type="date" id="sr-to" value="${F.to}" style="width:auto"></label>
-      <select id="sr-store"><option value="">Όλα τα καταστήματα</option>${visibleStores().map((s) => `<option ${s === F.store ? "selected" : ""}>${h(s)}</option>`).join("")}</select>
+      ${role() === "manager" ? `<strong>${h(S.me.store)}</strong>` : `<select id="sr-store"><option value="">Όλα τα καταστήματα</option>${visibleStores().map((s) => `<option ${s === F.store ? "selected" : ""}>${h(s)}</option>`).join("")}</select>`}
       <div class="chips">${Object.entries(KINDS).map(([k, v]) => `<button class="chip ${k === F.kind ? "on" : ""}" data-kind="${k}">${v.label}</button>`).join("")}</div>
     </div>
     <div class="tabs">${[["emp", "Ανά εργαζόμενο"], ["store", "Ανά κατάστημα"], ["daily", "Ημερήσιες καταχωρίσεις"], ["trend", "Εξέλιξη"]].map(([k, l]) => `<a href="javascript:void 0" data-tab="${k}" class="${k === F.tab ? "on" : ""}">${l}</a>`).join("")}</div>
@@ -169,11 +169,11 @@ export async function statsReport(params) {
   const re = () => statsReport(params);
   $("#sr-from").onchange = (e) => { F.from = e.target.value; re(); };
   $("#sr-to").onchange = (e) => { F.to = e.target.value; re(); };
-  $("#sr-store").onchange = (e) => { F.store = e.target.value; re(); };
+  $("#sr-store") && ($("#sr-store").onchange = (e) => { F.store = e.target.value; re(); });
   $$("[data-kind]").forEach((b) => (b.onclick = () => { F.kind = b.dataset.kind; re(); }));
   $$("[data-tab]").forEach((b) => (b.onclick = () => { F.tab = b.dataset.tab; re(); }));
   $("#sr-metric") && ($("#sr-metric").onchange = (e) => { F.metric = e.target.value; re(); });
-  $("#sr-xlsx").onclick = () => {
+  $("#sr-xlsx") && ($("#sr-xlsx").onclick = () => {
     const hdr = ["Κωδικός", "Εργαζόμενος", "Κατάστημα", "Ειδικότητα", ...(F.kind !== "exclusive" ? ["Ενημερώσεις"] : []), ...K.fields.map((f) => FIELD_LABEL[f]), ...(F.kind !== "exclusive" ? ["Εγγραφές (DR+CB)"] : []), ...K.metrics.map((m) => `${m.label} %`)];
     const line = (t) => { const m = metrics(t, F.kind); return [...(F.kind !== "exclusive" ? [t.informed] : []), ...K.fields.map((f) => t[f]), ...(F.kind !== "exclusive" ? [t.total_enr] : []), ...K.metrics.map((x) => (m[x.key] === null ? "—" : Math.round(m[x.key] * 10) / 10))]; };
     const perEmp = [...groupBy(rows, (r) => `${r.employee_code}|${r.store}`)].map(([, rs]) => [rs[0].employee_code, name(rs[0].employee_code), rs[0].store, rs[0].specialty, ...line(totals(rs, F.kind))]);
@@ -183,7 +183,7 @@ export async function statsReport(params) {
       "Ανά εργαζόμενο": [hdr, ...perEmp], "Ανά κατάστημα": [hdr, ...perStore],
       "Ημερήσιες": [["Ημερομηνία", "Κωδικός", "Εργαζόμενος", "Κατάστημα", "Ειδικότητα", ...(F.kind !== "exclusive" ? ["Ενημερώσεις"] : []), ...K.fields.map((f) => FIELD_LABEL[f]), "Καταχώρισε", "Διόρθωσε"], ...daily],
     });
-  };
+  });
 }
 
 function lineChart(series, n) {

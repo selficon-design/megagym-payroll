@@ -49,7 +49,7 @@ const t = r.overall; ok(t.rates["Συνολική μετατροπή"] === `${(M
 r = await run(kif, "stats_report", { kind: "reception", from_date: daysAgo(25), to_date: today, group_by: "store" });
 ok(r.groups.length === 1 && r.groups[0].store === "Κηφισιά", "manager: στατιστικά μόνο του καταστήματός του");
 r = await run(tr, "stats_report", { kind: "reception", from_date: daysAgo(25), to_date: today });
-ok(r.overall.entries === 0, "εκπαιδευτής: κανένα στατιστικό");
+ok(r.overall.entries > 0, "εκπαιδευτής (v3 §17, προβολή όπως manager σε όλα τα καταστήματα): βλέπει στατιστικά");
 r = await run(gly, "stats_report", { kind: "exclusive", from_date: today, to_date: today, group_by: "employee" });
 ok(r.groups[0].rates["Μετατροπή δοκιμαστικών"] === "—", "μηδενικός παρονομαστής → «—»");
 r = await run(gly, "missing_stats", { date: daysAgo(1) });

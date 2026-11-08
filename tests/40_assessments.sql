@@ -1,6 +1,9 @@
 \set ON_ERROR_STOP 1
 -- Αξιολογήσεις: εισαγωγή Excel με έλεγχο ανά γραμμή, πρόχειρο/ενεργοποίηση, εκδόσεις, χρονικό διάστημα στον server,
 -- απομόνωση εργαζομένου, καμία διαρροή σωστών απαντήσεων, βαθμολόγηση στον server, διπλό πάτημα. Εικονικά στοιχεία.
+-- Οι έλεγχοι αυτού του αρχείου γράφτηκαν για το «πεδίο εκπαιδευτή ανά χρήστη» (ρύθμιση «assigned» του πίνακα δικαιωμάτων).
+-- Η προεπιλογή της έκδοσης 3 (όλα τα καταστήματα) ελέγχεται στο 80_v3_permissions.sql.
+update role_scopes set scope = 'assigned' where role = 'trainer';
 insert into app_users(email,name,role,store) values
  ('owner@x.gr','ΓΔ','owner',null),('hr@x.gr','HR','hr',null),
  ('glyfada@x.gr','Manager Γλυφάδας','manager','Γλυφάδα'),('kifisia@x.gr','Manager Κηφισιάς','manager','Κηφισιά'),

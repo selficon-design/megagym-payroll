@@ -14,7 +14,7 @@ def new_page(b, w=1360, hgt=900):
     ctx = b.new_context(viewport={"width": w, "height": hgt}, locale="el-GR", timezone_id="Europe/Athens")
     pg = ctx.new_page(); pg.set_default_timeout(10000)
     errs = []
-    pg.on("pageerror", lambda e: errs.append(str(e)))
+    pg.on("pageerror", lambda e: (errs.append(str(e)), print("PAGEERROR", e.stack)))
     pg.on("console", lambda m: errs.append(m.text) if m.type == "error" and "Failed to load resource" not in m.text else None)
     pg._errs = errs
     return pg
@@ -23,9 +23,9 @@ def login(pg, email):
     if pg.is_visible("#app"):
         pg.evaluate("localStorage.clear(); sessionStorage.clear()"); pg.goto(BASE); pg.wait_for_selector("#login-email:visible")
     pg.fill("#login-email", email); pg.fill("#login-password", "test1234"); pg.click("#login-form button")
-    pg.wait_for_selector("#app:visible"); pg.wait_for_selector("#view .page-head, #view .card")
+    pg.wait_for_selector("#app:visible"); pg.wait_for_selector("#view .page-head, #view .card"); pg.wait_for_load_state("networkidle")
 def go(pg, hash):
-    pg.evaluate(f"location.hash = {json.dumps(hash)}"); pg.wait_for_timeout(250); pg.wait_for_selector("#view .page-head, #view .card"); pg.wait_for_load_state("networkidle")
+    pg.evaluate(f"(() => {{ const h = {json.dumps(hash)}, v = document.querySelector('#view'); if (v) v.innerHTML = ''; if (location.hash === h) window.dispatchEvent(new Event('mg:rerender')); else location.hash = h; }})()"); pg.wait_for_timeout(250); pg.wait_for_selector("#view .page-head, #view .card"); pg.wait_for_load_state("networkidle")
 def confirm_dialog(pg):
     pg.wait_for_selector("#cb-ok:visible"); pg.click("#cb-ok")
 def shot(pg, name): pg.screenshot(path=SHOTS + name + ".png", full_page=True)

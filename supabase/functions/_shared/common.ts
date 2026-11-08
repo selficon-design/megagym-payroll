@@ -34,7 +34,7 @@ export function userClient(req: Request): SupabaseClient {
   });
 }
 
-export type Me = { email: string; name: string; role: "owner" | "hr" | "manager" | "trainer"; store: string | null };
+export type Me = { email: string; name: string; role: "owner" | "hr" | "accounting" | "manager" | "trainer"; store: string | null; perms: string[] };
 
 export type Identity = { me: Me | null; status: number; error?: string };
 
@@ -58,7 +58,7 @@ export async function identify(req: Request): Promise<Identity> {
   }
   if (!data?.email) return { me: null, status: 401, error: "Η σύνδεση δεν είναι έγκυρη. Αποσυνδεθείτε και συνδεθείτε ξανά." };
   if (!data.role) return { me: null, status: 403, error: `Ο λογαριασμός ${data.email} δεν έχει ενεργό ρόλο στην εφαρμογή.` };
-  return { me: { email: data.email, name: data.name, role: data.role, store: data.store ?? null }, status: 200 };
+  return { me: { email: data.email, name: data.name, role: data.role, store: data.store ?? null, perms: Array.isArray(data.perms) ? data.perms : [] }, status: 200 };
 }
 
 /** Ο χρήστης της εφαρμογής (ή null). */

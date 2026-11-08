@@ -67,7 +67,12 @@ select pg_temp.as_user('hr@x.gr');
 select pg_temp.eq((select count(*) from daily_stats), 4::bigint, 'HR βλέπει όλα τα καταστήματα');
 select pg_temp.expect_fail($$select stats_save('2026-10-20', '[]')$$, 'HR μόνο ανάγνωση στατιστικών');
 select pg_temp.as_user('trainer@x.gr');
-select pg_temp.eq((select count(*) from daily_stats), 0::bigint, 'εκπαιδευτής δεν βλέπει στατιστικά');
+-- Έκδοση 3 (ενότητα 17): ο εκπαιδευτής βλέπει (όχι καταχωρίζει) στατιστικά όλων των καταστημάτων
+select pg_temp.eq((select count(*) from daily_stats), 4::bigint, 'εκπαιδευτής βλέπει στατιστικά όλων των καταστημάτων');
+select pg_temp.expect_fail($$select stats_save('2026-10-20', '[]')$$, 'εκπαιδευτής δεν καταχωρίζει στατιστικά');
+reset role; update role_permissions set allowed = false where role = 'trainer' and perm in ('stats.view','stats.reports'); select pg_temp.as_user('trainer@x.gr');
+select pg_temp.eq((select count(*) from daily_stats), 0::bigint, 'χωρίς το δικαίωμα στον πίνακα: καμία προβολή (ο server ακολουθεί τον πίνακα)');
+reset role; update role_permissions set allowed = true where role = 'trainer' and perm in ('stats.view','stats.reports');
 
 -- Τύποι διαστήματος από ΑΘΡΟΙΣΜΑΤΑ (όχι μέσος όρος ποσοστών)
 select pg_temp.as_user('owner@x.gr');

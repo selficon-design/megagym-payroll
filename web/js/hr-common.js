@@ -2,7 +2,7 @@
 import { h, dmy } from "./util.js";
 
 export const CATEGORIES = {
-  leave: "Άδεια / απουσία",
+  leave_change: "Αλλαγή ημερομηνιών εγκεκριμένης άδειας", leave: "Άδεια / απουσία",
   shift_change: "Αλλαγή βάρδιας, ρεπό ή προγράμματος",
   raise: "Αύξηση αποδοχών",
   contract_change: "Αλλαγή ωρών ή σύμβασης",
@@ -16,7 +16,7 @@ export const CATEGORIES = {
 };
 export const EMPLOYEE_CATS = ["leave", "shift_change", "raise", "contract_change", "advance", "documents", "transfer", "other_hr"];
 export const MANAGER_CATS = ["negative_review", "incident", "warning_request"];
-export const flowOf = (c) => (c === "leave" ? "leave" : ["raise", "contract_change"].includes(c) ? "gm" : c === "warning_request" ? "warning" : ["negative_review", "incident"].includes(c) ? "report" : "generic");
+export const flowOf = (c) => (c === "leave" || c === "leave_change" ? "leave" : ["raise", "contract_change"].includes(c) ? "gm" : c === "warning_request" ? "warning" : ["negative_review", "incident"].includes(c) ? "report" : "generic");
 export const FLOW_NOTE = {
   leave: "Αποφασίζει το HR ή η Γενική Διευθύντρια (η ΓΔ δεν χρειάζεται να περιμένει το HR).",
   gm: "Εξέταση από HR και ΤΕΛΙΚΗ έγκριση από τη Γενική Διευθύντρια. Η έγκριση δεν αλλάζει αυτόματα αποδοχές ή σύμβαση.",

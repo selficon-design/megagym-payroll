@@ -173,11 +173,13 @@ async function drawEleven(afterKey = false) {
   const box = $("#el-box"); if (!box || S.api.mode === "demo") return;
   let st = { provider: "browser" };
   try { st = await S.api.ttsStatus(); } catch {}
+  if (!box.isConnected) return;
   if (role() !== "owner") {
     box.innerHTML = `<p class="small" style="margin-top:6px"><strong>Φωνή Βοηθού:</strong> ${st.provider === "elevenlabs" ? `ElevenLabs — ${h(st.voice_name || "")}` : "της συσκευής"}</p>`;
     return;
   }
   let ks = {}; try { ks = (await S.api.voiceKeyStatus()) || {}; } catch {}
+  if (!box.isConnected) return; // το παράθυρο έκλεισε όσο φόρτωνε
   box.innerHTML = `<div class="el-set"><h4 style="margin:0 0 6px">Φωνή ElevenLabs (για όλους τους χρήστες)</h4>
     <p class="muted small">Παίζει ως αρχείο ήχου, οπότε δουλεύει σωστά και στο iPhone. Το κλειδί φυλάσσεται στον server και δεν εμφανίζεται ξανά.</p>
     <div class="vs-row"><label>Κλειδί API</label>${ks.configured ? `<span class="badge b-signed">αποθηκευμένο</span><span class="muted small">${h(ks.updated_by || "")}</span>` : `<span class="badge b-missing">δεν έχει οριστεί</span>`}</div>
@@ -466,15 +468,10 @@ export async function users() {
   <div class="page-head"><div><div class="eyebrow">Πρόσβαση</div><h1>Διαχείριση χρηστών</h1>
     <p class="muted">Ποιος μπαίνει στην εφαρμογή και τι βλέπει. Οι εργαζόμενοι δεν χρειάζονται λογαριασμό: υπογράφουν στο tablet του καταστήματος.</p></div>
     <button class="btn primary" id="us-new">+ Νέος χρήστης</button></div>
-  <div class="grid g4" style="margin-bottom:16px">
-    <div class="card"><span class="badge b-role">Γενική Διευθύντρια</span><p class="small muted" style="margin-top:8px">Τα πάντα: όλα τα καταστήματα, δηλώσεις, υπογραφές, ακυρώσεις, backup, χρήστες, πρότυπα κειμένων, ερωτηματολόγια· τελική απόφαση σε αυξήσεις, συμβάσεις και προειδοποιήσεις.</p></div>
-    <div class="card"><span class="badge b-role">HR</span><p class="small muted" style="margin-top:8px">Όλα τα καταστήματα: εργαζόμενοι, δηλώσεις, αιτήματα και αναφορές, αποφάσεις αδειών, προσχέδια προειδοποιήσεων, αναφορές στατιστικών και αξιολογήσεων. Δεν παίρνει υπογραφές.</p></div>
-    <div class="card"><span class="badge b-role">Manager</span><p class="small muted" style="margin-top:8px">Μόνο το κατάστημά του: δηλώσεις και υπογραφές, αιτήματα εργαζομένων, αναφορές, ημερήσια στατιστικά, έναρξη αξιολογήσεων.</p></div>
-    <div class="card"><span class="badge b-role">Εκπαιδευτής</span><p class="small muted" style="margin-top:8px">Μόνο έναρξη αξιολογήσεων για εργαζόμενους του πεδίου που του ορίζετε. Καμία πρόσβαση σε μισθοδοσία, άδειες, αναφορές ή χρήστες.</p></div>
-  </div>
+  <div class="note" style="margin-bottom:16px">Τι επιτρέπεται σε κάθε ρόλο ορίζεται στο <a href="#/permissions">Ρόλοι & Δικαιώματα</a> (ανά ενότητα και ενέργεια, με ιστορικό). Ο manager δένεται με ένα κατάστημα.</div>
   <div class="card"><div class="table-wrap"><table class="stack"><thead><tr><th>Χρήστης</th><th>Ρόλος</th><th>Λογαριασμός</th><th></th></tr></thead><tbody>
   ${list.map((u) => { const s = st?.[u.email]; return `<tr><td><strong>${h(u.name)}</strong><span class="sub">${h(u.email)}</span></td>
-    <td><span class="badge b-role">${ROLE_GR[u.role]}${u.store ? " · " + h(u.store) : ""}</span>${u.role === "trainer" ? ` <button class="btn sm ghost" data-scope="${h(u.email)}">Πεδίο ευθύνης</button>` : ""}</td>
+    <td><span class="badge b-role">${ROLE_GR[u.role]}${u.store ? " · " + h(u.store) : ""}</span>${u.role === "trainer" ? ` <button class="btn sm ghost" data-scope="${h(u.email)}" title="Ισχύει όταν το πεδίο του ρόλου είναι «Όσα ορίζονται ανά χρήστη»">Πεδίο ευθύνης</button>` : ""}</td>
     <td class="small">${!u.active ? `<span class="badge b-voided">Κλειδωμένος</span>` : st === null ? `<span class="muted">—</span>` : s ? `<span class="badge b-signed">Ενεργός</span><span class="sub">${s.lastSignIn ? "Τελ. είσοδος " + relTime(s.lastSignIn) : "Δεν έχει μπει ακόμη"}</span>` : `<span class="badge b-pending">Χωρίς κωδικό</span>`}</td>
     <td class="acts"><div class="row-actions" style="justify-content:flex-end">
       <button class="btn sm" data-edit="${h(u.email)}">Επεξεργασία</button>
@@ -512,7 +509,7 @@ function userDialog(u) {
     <form id="uf"><div class="grid g2">
       <div><label>Ονοματεπώνυμο</label><input id="uf-name" required maxlength="150" value="${h(u.name)}"></div>
       <div><label>Email</label><input id="uf-email" type="email" required maxlength="254" value="${h(u.email)}" ${isNew ? "" : "readonly"}></div>
-      <div><label>Ρόλος</label><select id="uf-role">${["manager", "hr", "owner", ...(S.api.mode === "demo" ? [] : ["trainer"])].map((r) => `<option value="${r}" ${r === u.role ? "selected" : ""}>${ROLE_GR[r]}</option>`).join("")}</select></div>
+      <div><label>Ρόλος</label><select id="uf-role">${["manager", "hr", "owner", ...(S.api.mode === "demo" ? [] : ["accounting", "trainer"])].map((r) => `<option value="${r}" ${r === u.role ? "selected" : ""}>${ROLE_GR[r]}</option>`).join("")}</select></div>
       <div id="uf-store-box"><label>Κατάστημα</label><select id="uf-store">${activeStores().map((s) => `<option ${s === u.store ? "selected" : ""}>${h(s)}</option>`).join("")}</select></div>
       ${isNew ? `<div style="grid-column:1/-1"><label>Κωδικός πρώτης εισόδου</label><div class="row-actions" style="flex-wrap:nowrap"><input id="uf-pw" minlength="8" required value="${genPassword()}"><button type="button" class="btn" id="uf-gen">Νέος</button></div>
         <p class="muted small" style="margin-top:6px">Δώστε τον στον χρήστη. Μπορεί να τον αλλάξει από «Ο λογαριασμός μου».</p></div>` : ""}
@@ -535,7 +532,7 @@ function userDialog(u) {
               shareCredentials(v, pw);
             } else { closeDialog(); toast("Αποθηκεύτηκε."); }
             users();
-            if (v.role === "trainer" && isNew) toast("Ορίστε το πεδίο ευθύνης του εκπαιδευτή από «Πεδίο ευθύνης».");
+
           } catch (err) { $("#uf-msg").textContent = err.message; }
         };
       },
@@ -581,7 +578,7 @@ export async function settings() {
   <div class="grid g2">${block("Καταστήματα", "store", S.lists.stores)}${block("Εταιρείες", "company", S.lists.companies)}</div>
   ${specialtiesBlock()}
   ${S.api.mode === "demo" ? "" : `<div class="card" style="margin-top:16px"><div class="card-head"><h3>Πρότυπα κειμένων</h3><a class="btn sm primary" href="#/templates">Άνοιγμα →</a></div><p class="muted small">Κείμενα αιτήσεων, εγκρίσεων, απορρίψεων, διευκρινίσεων, είδη άδειας και λόγοι απόρριψης, με ιστορικό εκδόσεων.</p></div>`}
-  <div class="card" style="margin-top:16px"><h3>Πληροφορίες</h3><dl class="kv"><dt>Λειτουργία</dt><dd>${S.api.mode === "demo" ? "Επίδειξη (τοπικά δεδομένα)" : "Σύνδεση με βάση Supabase"}</dd><dt>Έκδοση</dt><dd>2.1 · Καρτέλα εργαζομένου</dd></dl></div>`;
+  <div class="card" style="margin-top:16px"><h3>Πληροφορίες</h3><dl class="kv"><dt>Λειτουργία</dt><dd>${S.api.mode === "demo" ? "Επίδειξη (τοπικά δεδομένα)" : "Σύνδεση με βάση Supabase"}</dd><dt>Έκδοση</dt><dd>3.0 · Άδειες, πρόγραμμα, δικαιώματα</dd></dl></div>`;
   const reload = async () => { S.lists = await S.api.lists(); settings(); };
   bindSpecialties(reload);
   $$("[data-tog]").forEach((b) => (b.onclick = async () => {
@@ -600,7 +597,7 @@ export async function settings() {
 
 // ═══════════════════════ Backup ═══════════════════════
 export async function backup() {
-  if (!can.backup()) return (view().innerHTML = `<div class="card empty">Μόνο για τη Γενική Διευθύντρια.</div>`);
+  if (!can.backup()) return (view().innerHTML = `<div class="card empty">Δεν έχετε δικαίωμα backup.</div>`);
   const F = (S.filters.backup ??= { store: "" });
   const list = (await S.api.declarations({ month: S.month, status: "signed" })).filter((d) => !F.store || d.store === F.store);
   view().innerHTML = `
@@ -617,7 +614,7 @@ export async function backup() {
     const btn = $("#bk-go"); btn.disabled = true;
     try {
       $("#bk-msg").textContent = "Λήψη υπογραφών…";
-      const full = await S.api.declarationsFull(list.map((d) => d.id));
+      const full = await S.api.declarationsFull(list.map((d) => d.id), "backup");
       await backupZip(S.month, full, (i, n) => ($("#bk-msg").textContent = `Δημιουργία PDF ${i}/${n}…`));
       $("#bk-msg").textContent = `Έτοιμο: ${full.length} δηλώσεις.`;
     } catch (e) { $("#bk-msg").textContent = "Δεν ολοκληρώθηκε: " + e.message; }

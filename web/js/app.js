@@ -7,8 +7,11 @@ import { tablet, assistant, audit, users, settings, backup, account, loadVoice }
 import { requests, requestNew, requestView } from "./views-hr.js";
 import { employeeCard } from "./views-card.js";
 import { statsEntry, statsReport } from "./views-stats.js";
-import { assessments, assessmentView, assessRun, assessReports } from "./views-assess.js";
+import { assessments, assessmentView, assessRun, assessReports, exitReports } from "./views-assess.js";
 import { templates } from "./views-admin.js";
+import { leaves, answers, tasks, refreshAnswers } from "./views-leave.js";
+import { schedule } from "./views-schedule.js";
+import { permissionsView } from "./views-perms.js";
 import { afterFillReturn } from "./fill-launch.js";
 
 const live = () => S.api?.mode !== "demo";
@@ -18,38 +21,46 @@ const ROUTES = [
   { id: "prepare", title: "Προετοιμασία", ico: "✎", group: "Μισθοδοσία", render: prepare, show: can.prepare },
   { id: "tablet", title: "Tablet καταστήματος", ico: "▣", group: "Μισθοδοσία", render: tablet, show: can.sign },
   { id: "declarations", title: "Δηλώσεις", ico: "▤", group: "Μισθοδοσία", render: declarations, show: can.payroll },
-  { id: "employees", title: "Εργαζόμενοι", ico: "♙", group: "Προσωπικό", render: employees, show: can.payroll },
+  { id: "employees", title: "Εργαζόμενοι", ico: "♙", group: "Προσωπικό", render: employees, show: can.employees },
+  { id: "answers", title: "Απαντήσεις", ico: "✆", group: "Προσωπικό", render: answers, show: () => can.requests() && live(), badge: true },
   { id: "requests", title: "Αιτήματα & Αναφορές", ico: "✉", group: "Προσωπικό", render: requests, show: () => can.requests() && live() },
+  { id: "tasks", title: "Εργασίες μου", ico: "☐", group: "Προσωπικό", render: tasks, show: () => ["accounting", "hr"].includes(role()) && live() },
+  { id: "leaves", title: "Άδειες", ico: "☀", group: "Προσωπικό", render: leaves, show: () => can.leave() && live() },
+  { id: "schedule", title: "Πρόγραμμα", ico: "▥", group: "Προσωπικό", render: schedule, show: () => can.schedule() && live() },
   { id: "stats-entry", title: "Ημερήσια στατιστικά", ico: "▦", group: "Προσωπικό", render: statsEntry, show: () => can.statsEntry() && live() },
   { id: "stats-report", title: "Αναφορές στατιστικών", ico: "↗", group: "Προσωπικό", render: statsReport, show: () => can.statsReports() && live() },
   { id: "assessments", title: "Αξιολογήσεις", ico: "☑", group: "Προσωπικό", render: assessments, show: () => can.assessResults() && live() },
   { id: "assess-run", title: "Έναρξη αξιολόγησης", ico: "▶", group: "Προσωπικό", render: assessRun, show: () => can.assessOpen() && live() },
-  { id: "assistant", title: "Βοηθός AI", ico: "✦", group: "Προσωπικό", render: assistant, show: can.payroll },
+  { id: "assistant", title: "Βοηθός AI", ico: "✦", group: "Προσωπικό", render: assistant, show: can.ai },
   { id: "templates", title: "Πρότυπα κειμένων", ico: "¶", group: "Διαχείριση", render: templates, show: () => can.templates() && live() },
   { id: "audit", title: "Ιστορικό ενεργειών", ico: "↺", group: "Διαχείριση", render: audit, show: can.audit },
   { id: "backup", title: "Μηνιαίο backup", ico: "⇩", group: "Διαχείριση", render: backup, show: can.backup },
   { id: "users", title: "Χρήστες", ico: "🔑", group: "Διαχείριση", render: users, show: can.users },
+  { id: "permissions", title: "Ρόλοι & Δικαιώματα", ico: "⚖", group: "Διαχείριση", render: permissionsView, show: () => can.permissions() && live() },
   { id: "settings", title: "Ρυθμίσεις", ico: "⚙", group: "Διαχείριση", render: settings, show: can.settings },
   { id: "account", title: "Ο λογαριασμός μου", ico: "◉", group: "Λογαριασμός", render: account, show: () => true },
   // Σελίδες χωρίς δική τους θέση στο μενού
   { id: "request", title: "Αίτημα", group: "", render: requestView, show: () => can.requests() && live(), hidden: true, parent: "requests" },
   { id: "request-new", title: "Νέο αίτημα", group: "", render: requestNew, show: () => can.createRequests() && live(), hidden: true, parent: "requests" },
-  { id: "employee", title: "Καρτέλα εργαζομένου", group: "", render: employeeCard, show: () => live(), hidden: true, parent: "employees" },
+  { id: "employee", title: "Καρτέλα εργαζομένου", group: "", render: employeeCard, show: () => live() && can.employees(), hidden: true, parent: "employees" },
   { id: "assessment", title: "Ερωτηματολόγιο", group: "", render: assessmentView, show: () => can.assessResults() && live(), hidden: true, parent: "assessments" },
-  { id: "assess-reports", title: "Αναφορές αξιολογήσεων", group: "", render: assessReports, show: () => can.assessResults() && live(), hidden: true, parent: "assessments" },
+  { id: "assess-reports", title: "Αναφορές αξιολογήσεων", group: "", render: assessReports, show: () => can.assessFull() && live(), hidden: true, parent: "assessments" },
+  { id: "exit-reports", title: "Exit Interview — αναφορές", group: "", render: exitReports, show: () => can.exit() && live(), hidden: true, parent: "assessments" },
 ];
-const homeRoute = () => ROUTES.find((r) => r.show() && !r.hidden) || ROUTES.find((r) => r.id === "account");
+const homeRoute = () => ROUTES.find((r) => r.show() && !r.hidden && r.id !== "answers") || ROUTES.find((r) => r.id === "account");
 
 function parseHash() {
   const [path, qs] = location.hash.replace(/^#\/?/, "").split("?");
   return { id: path || "overview", params: new URLSearchParams(qs || "") };
 }
 
+let answersCount = 0;
 function drawNav(openCount) {
   let html = "", group = "";
   for (const r of ROUTES.filter((r) => r.show() && !r.hidden)) {
     if (r.group !== group) { group = r.group; html += `<div class="nav-group">${group}</div>`; }
-    html += `<a href="#/${r.id}" data-id="${r.id}"><span class="ico">${r.ico}</span>${r.title}${r.count && openCount ? `<span class="count">${openCount}</span>` : ""}</a>`;
+    const n = r.count ? openCount : r.badge ? answersCount : 0;
+    html += `<a href="#/${r.id}" data-id="${r.id}"><span class="ico">${r.ico}</span>${r.title}${n ? `<span class="count ${r.badge ? "hot" : ""}" title="${r.badge ? "Αδιάβαστες ενημερώσεις" : ""}">${n}</span>` : ""}</a>`;
   }
   $("#nav").innerHTML = html;
   markActive();
@@ -60,6 +71,7 @@ function markActive() {
   $$("#nav a").forEach((a) => a.classList.toggle("active", a.dataset.id === parent));
 }
 async function refreshCount() {
+  answersCount = await refreshAnswers().catch(() => 0);
   if (!can.payroll()) return drawNav(0);
   try { const rows = await getStatus(); drawNav(rows.filter((r) => r.status !== "signed").length); } catch { drawNav(0); }
 }
@@ -172,6 +184,7 @@ async function boot() {
   window.addEventListener("hashchange", route);
   $("#voice-fab").onclick = () => { S.voiceStart = true; location.hash = "#/assistant"; };
   window.addEventListener("mg:rerender", () => { invalidate(); route(); });
+  window.addEventListener("mg:answers", () => refreshCount());
   window.addEventListener("online", () => toast("Η σύνδεση επανήλθε."));
   window.addEventListener("offline", () => toast("Χωρίς σύνδεση internet. Οι αλλαγές δεν θα αποθηκευτούν.", true));
 
