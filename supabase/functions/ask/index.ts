@@ -175,6 +175,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
     if (!API_KEY) return json({ error: "Ο Βοηθός AI δεν έχει ενεργοποιηθεί (λείπει το ANTHROPIC_API_KEY)." }, 503);
+    const t0 = Date.now();
     const who = await identify(req);
     if (!who.me) return json({ error: who.error }, who.status);
     const me = who.me;
@@ -213,13 +214,18 @@ Deno.serve(async (req) => {
 Δεν μπορείς να αλλάξεις δεδομένα· για ενέργειες (υπογραφή, προετοιμασία, αποφάσεις αιτημάτων, καταχώριση στατιστικών, έναρξη αξιολόγησης) πες στον χρήστη από ποια ενότητα της εφαρμογής γίνονται. Μην επαναλαμβάνεις ολόκληρα κείμενα αποφάσεων ή αναφορών αν δεν ζητηθούν.${body.voice === true ? `
 ΦΩΝΗΤΙΚΗ ΣΥΝΟΜΙΛΙΑ: ο χρήστης μίλησε (η ερώτηση προέρχεται από αναγνώριση ομιλίας και μπορεί να έχει μικρά λάθη — κατάλαβε το νόημα, π.χ. ονόματα καταστημάτων και εργαζομένων με παρόμοιο ήχο) και η απάντησή σου θα ΔΙΑΒΑΣΤΕΙ ΦΩΝΑΧΤΑ. Γράψε φυσικό προφορικό λόγο: σύντομα (2–5 προτάσεις), χωρίς πίνακες, κεφαλίδες, σύμβολα ή έντονα. Ονόματα σε μία πρόταση χωρισμένα με κόμμα· αν είναι πάνω από 8, πες τα πρώτα 8 και πόσα ακόμη υπάρχουν. Ποσά ολογράφως όπως λέγονται (π.χ. «1.250 ευρώ»), ημερομηνίες όπως λέγονται (π.χ. «3 Νοεμβρίου»). Αν η ερώτηση δεν είναι σαφής, κάνε μία σύντομη διευκρινιστική ερώτηση.` : ""}`;
 
+    // Χρόνοι: πόσο «σκέφτηκε» το μοντέλο και πόσο κράτησαν οι αναζητήσεις στα δεδομένα
+    const T = { model_ms: 0, tools_ms: 0, steps: 0, tools: 0, prep_ms: Date.now() - t0 };
+    const timing = () => ({ ...T, model: MODEL });
     for (let step = 0; step < 8; step++) {
+      const tm = Date.now(); T.steps++;
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({ model: MODEL, max_tokens: 1500, system, tools, messages }),
       });
       const out = await r.json();
+      T.model_ms += Date.now() - tm;
       if (!r.ok) {
         console.error(out);
         return json({ error: "Ο Βοηθός δεν απάντησε: " + (out?.error?.message ?? r.status) }, 502);
@@ -227,18 +233,20 @@ Deno.serve(async (req) => {
       messages.push({ role: "assistant", content: out.content });
       if (out.stop_reason !== "tool_use") {
         const text = (out.content ?? []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n").trim();
-        return json({ answer: text || "Δεν βρήκα απάντηση." });
+        return json({ answer: text || "Δεν βρήκα απάντηση.", timing: timing() });
       }
       const results = [];
       for (const c of out.content) {
         if (c.type !== "tool_use") continue;
         let result: unknown;
+        const tt = Date.now(); T.tools++;
         try { result = await runTool(db, c.name, c.input ?? {}, me); } catch (e) { result = { error: String(e) }; }
+        T.tools_ms += Date.now() - tt;
         results.push({ type: "tool_result", tool_use_id: c.id, content: JSON.stringify(result).slice(0, 60000) });
       }
       messages.push({ role: "user", content: results });
     }
-    return json({ answer: "Η ερώτηση χρειάστηκε πολλά βήματα. Δοκιμάστε να τη διατυπώσετε πιο συγκεκριμένα." });
+    return json({ answer: "Η ερώτηση χρειάστηκε πολλά βήματα. Δοκιμάστε να τη διατυπώσετε πιο συγκεκριμένα.", timing: timing() });
   } catch (e) {
     console.error(e);
     return json({ error: "Σφάλμα Βοηθού: " + ((e as Error).message ?? "") }, 500);

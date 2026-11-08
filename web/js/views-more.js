@@ -142,13 +142,28 @@ function md(text) {
   return html;
 }
 
+// ── Χρόνοι απόκρισης του Βοηθού ──
+const sec = (ms) => (ms / 1000).toLocaleString("el-GR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "″";
+const modelShort = (m) => (/flash/.test(m) ? "Flash" : /multilingual/.test(m) ? "Πολύγλωσσο" : /turbo/.test(m) ? "Turbo" : m);
+function tmLine(t) {
+  const parts = [];
+  if (t.listenMs != null) parts.push(`<span title="Πόσο περίμενε μετά την τελευταία σας λέξη για να βεβαιωθεί ότι τελειώσατε">ακρόαση ${sec(t.listenMs)}</span>`);
+  const s = t.server;
+  const inner = s ? ` <span class="muted">(${[`σκέψη μοντέλου ${sec(s.model_ms)}`, s.tools ? `${s.tools === 1 ? "1 αναζήτηση" : `${s.tools} αναζητήσεις`} στα δεδομένα ${sec(s.tools_ms)}` : "", `δίκτυο/server ${sec(Math.max(0, t.aiMs - s.model_ms - s.tools_ms))}`].filter(Boolean).join(" · ")}${s.steps > 1 ? ` · ${s.steps} γύροι` : ""})</span>` : "";
+  parts.push(`<span title="Από την αποστολή της ερώτησης μέχρι να έρθει η απάντηση">AI ${sec(t.aiMs)}${inner}</span>`);
+  if (t.voiceMs != null) parts.push(`<span title="Από την απάντηση μέχρι να ακουστεί η φωνή">φωνή ${sec(t.voiceMs)} · ${h(t.voiceLabel || "")}</span>`);
+  else if (t.spoken) parts.push(`<span class="muted">φωνή …</span>`);
+  const total = (t.listenMs || 0) + t.aiMs + (t.voiceMs || 0);
+  return `⏱ ${parts.join(" · ")}${t.voiceMs != null || !t.spoken ? ` · <strong>σύνολο ${sec(total)}</strong>` : ""}`;
+}
+
 /** Φωνή του Βοηθού: αν η ΓΔ έχει ρυθμίσει ElevenLabs, ο ήχος έρχεται από τον server (παίζει σωστά και σε iPhone). */
 export async function loadVoice() {
   voice.setRemote(null);
   if (S.api.mode === "demo" || !S.api.ttsStatus) return;
   try {
     const st = await S.api.ttsStatus();
-    if (st?.provider === "elevenlabs") voice.setRemote({ name: st.voice_name || "ElevenLabs", fetchAudio: (t) => S.api.tts(t), onFallback: (m) => toast(m + " (χρησιμοποιήθηκε η φωνή της συσκευής)", true) });
+    if (st?.provider === "elevenlabs") voice.setRemote({ name: st.voice_name || "ElevenLabs", model: st.model, fetchAudio: (t) => S.api.tts(t), onFallback: (m) => toast(m + " (χρησιμοποιήθηκε η φωνή της συσκευής)", true) });
   } catch {}
 }
 
@@ -227,6 +242,7 @@ export async function assistant() {
     <div class="row-actions"><button class="btn" id="ai-vset" aria-expanded="false">⚙ Φωνή</button><button class="btn" id="ai-clear">Νέα συζήτηση</button></div></div>
   <div class="card voice-set" id="ai-vpanel" hidden>
     <label class="check"><input type="checkbox" id="vs-speak" ${P.speak ? "checked" : ""}> Διάβαζε τις απαντήσεις φωναχτά</label>
+    <label class="check"><input type="checkbox" id="vs-tm" ${P.timings !== false ? "checked" : ""}> Δείξε τους χρόνους απόκρισης κάτω από κάθε απάντηση (ακρόαση · AI · φωνή)</label>
     <div class="vs-row"><label for="vs-voice">Φωνή</label><select id="vs-voice"></select>
       <label for="vs-rate">Ταχύτητα</label><input type="range" id="vs-rate" min="0.7" max="1.4" step="0.05" value="${P.rate}"><span id="vs-rate-v" class="muted small"></span>
       <button class="btn sm" id="vs-test">▶ Δοκιμή</button></div>
@@ -247,7 +263,7 @@ export async function assistant() {
   </div>`;
   const log = $("#ai-log"), mic = $("#ai-mic"), stat = $("#ai-vstat");
   const draw = () => {
-    log.innerHTML = S.chat.length ? S.chat.map((m, i) => `<div class="msg ${m.role === "user" ? "user" : "bot"} ${m.err ? "err" : ""}">${m.role === "user" ? (m.voice ? `<span class="said">🎤</span> ` : "") + h(m.content) : md(m.content)}${m.role !== "user" && !m.err && voice.canSpeak ? `<button class="say" data-say="${i}" title="Ακρόαση" aria-label="Ακρόαση απάντησης">🔊</button>` : ""}</div>`).join("")
+    log.innerHTML = S.chat.length ? S.chat.map((m, i) => `<div class="msg ${m.role === "user" ? "user" : "bot"} ${m.err ? "err" : ""}">${m.role === "user" ? (m.voice ? `<span class="said">🎤</span> ` : "") + h(m.content) : md(m.content)}${m.role !== "user" && !m.err && (voice.canSpeak || voice.usingRemote()) ? `<button class="say" data-say="${i}" title="Ακρόαση" aria-label="Ακρόαση απάντησης">🔊</button>` : ""}${m.timing && voice.prefs().timings !== false ? `<div class="tm" data-tm="${i}">${tmLine(m.timing)}</div>` : ""}</div>`).join("")
       : `<div class="empty" style="margin:auto"><div class="big">🎤</div>Πατήστε το μικρόφωνο και μιλήστε, ή γράψτε μια ερώτηση.</div>`;
     $$("[data-say]", log).forEach((b) => (b.onclick = () => { voice.unlock(); say(S.chat[b.dataset.say].content); }));
     log.scrollTop = log.scrollHeight;
@@ -256,36 +272,45 @@ export async function assistant() {
   const setMic = (state) => { mic.dataset.state = state; mic.textContent = state === "listening" ? "■" : state === "speaking" ? "⏹" : "🎤"; mic.title = state === "listening" ? "Τέλος ομιλίας" : state === "speaking" ? "Σταμάτα την ανάγνωση" : "Πατήστε και μιλήστε"; };
   const here = () => location.hash.startsWith("#/assistant");
 
-  const say = (text, after) => {
+  const say = (text, after, onVoiceStart) => {
     setMic("speaking");
+    const tv = performance.now();
     status(`🔊 Διαβάζω την απάντηση… <button class="btn sm" id="vs-stop">Σταμάτα</button>`);
     $("#vs-stop").onclick = () => { voice.stopSpeaking(); };
     let failed = false;
     return voice.speak(text, {
+      onStart: () => onVoiceStart?.(performance.now() - tv),
       onError: (m) => { failed = true; setMic("idle"); status(h(m), "bad"); if (conv) endConv(h(m), "bad"); },
       onEnd: () => { if (failed) return; setMic("idle"); status(""); after?.(); },
     }).then(() => { if (!failed && mic.dataset.state === "speaking") { setMic("idle"); status(""); } });
   };
 
-  const send = async (text, { spoken = false } = {}) => {
+  const send = async (text, { spoken = false, listenMs = null } = {}) => {
     text = text.trim(); if (!text) return;
     S.chat.push({ role: "user", content: text, voice: spoken }); draw();
     $("#ai-in").value = ""; $("#ai-sugg").hidden = true;
     log.insertAdjacentHTML("beforeend", `<div class="msg bot" id="ai-typing"><span class="typing"><i></i><i></i><i></i></span></div>`); log.scrollTop = log.scrollHeight;
     let answer = null;
+    const ta = performance.now();
     try {
-      answer = await S.api.ask(S.chat.filter((m) => !m.err).map(({ role, content }) => ({ role, content })), { voice: spoken });
-      S.chat.push({ role: "assistant", content: answer });
+      const r = await S.api.ask(S.chat.filter((m) => !m.err).map(({ role, content }) => ({ role, content })), { voice: spoken, full: true });
+      answer = typeof r === "string" ? r : r.answer;
+      S.chat.push({ role: "assistant", content: answer, timing: { listenMs, aiMs: performance.now() - ta, server: typeof r === "string" ? null : r.timing, spoken } });
     } catch (e) { S.chat.push({ role: "assistant", content: e.message, err: true }); }
     if (!here()) return;
     draw();
     const next = () => { if (conv && here()) startListening(); };
-    if (spoken && voice.prefs().speak && voice.canSpeak) say(answer || S.chat[S.chat.length - 1].content, next);
+    const idx = S.chat.length - 1, msg = S.chat[idx];
+    if (spoken && voice.prefs().speak && (voice.canSpeak || voice.usingRemote())) say(answer || msg.content, next, (ms) => {
+      if (!msg.timing) return;
+      msg.timing.voiceMs = ms; msg.timing.voiceLabel = voice.usingRemote() ? `ElevenLabs${voice.remoteInfo()?.model ? " " + modelShort(voice.remoteInfo().model) : ""}` : "φωνή συσκευής";
+      const el = $(`[data-tm="${idx}"]`); if (el) el.innerHTML = tmLine(msg.timing);
+    });
     else next();
   };
 
   // Τρόπος: «Χειροκίνητα» = πατάτε 🎤 για κάθε ερώτηση · «Αυτόματα» = πατάτε μία φορά και η συνομιλία συνεχίζει μόνη της
-  let auto = !!voice.prefs().hands, conv = false, quiet = 0, stopRec = () => {};
+  let auto = !!voice.prefs().hands, conv = false, quiet = 0, stopRec = () => {}, lastHeard = 0;
   const drawMode = () => {
     $$(".seg [data-mode]").forEach((b) => { const on = (b.dataset.mode === "auto") === auto; b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); });
     $("#mode-hint").textContent = auto ? "Πατάτε 🎤 μία φορά: μιλάτε, απαντά, και ξανακούει μόνο του. Πείτε «τέλος» για να σταματήσει."
@@ -302,15 +327,16 @@ export async function assistant() {
     setMic("listening");
     status(conv ? `<span class="rec-dot"></span> Αυτόματη συνομιλία — ακούω… (πείτε «τέλος» για να σταματήσει)` : `<span class="rec-dot"></span> Ακούω… μιλήστε τώρα. Πατήστε ■ όταν τελειώσετε.`, "on");
     $("#ai-in").value = "";
+    lastHeard = 0;
     stopRec = voice.listen({
-      onText: (t) => { $("#ai-in").value = t; },
+      onText: (t) => { $("#ai-in").value = t; lastHeard = performance.now(); },
       onEnd: (t) => {
         setMic("idle"); status("");
         if (t) {
           quiet = 0;
           const p = norm(t).replace(/[.,;!·]/g, "").trim();
           if (conv && p.split(/\s+/).length <= 4 && ENDS.test(p)) { $("#ai-in").value = ""; endConv(); voice.speak("Εντάξει. Όποτε με χρειαστείτε, πατήστε το μικρόφωνο."); return; }
-          return send(t, { spoken: true });
+          return send(t, { spoken: true, listenMs: lastHeard ? performance.now() - lastHeard : null });
         }
         if (conv && quiet < 2) { quiet++; return startListening(); }   // λίγη σιωπή: συνεχίζει να ακούει
         if (conv) return endConv("Η αυτόματη συνομιλία σταμάτησε επειδή δεν ακούστηκε κάτι. Πατήστε 🎤 για να συνεχίσετε.", "warn");
@@ -349,6 +375,7 @@ export async function assistant() {
   drawEleven();
   const rateLbl = () => ($("#vs-rate-v").textContent = `×${Number($("#vs-rate").value).toFixed(2).replace(".", ",")}`);
   rateLbl();
+  $("#vs-tm").onchange = (e) => { voice.setPrefs({ timings: e.target.checked }); draw(); };
   $("#vs-speak").onchange = (e) => { voice.setPrefs({ speak: e.target.checked }); if (!e.target.checked) voice.stopSpeaking(); };
   $("#vs-voice").onchange = (e) => voice.setPrefs({ voice: e.target.value });
   $("#vs-rate").oninput = (e) => { voice.setPrefs({ rate: Number(e.target.value) }); rateLbl(); };

@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const { key, vs } = await settings();
 
-    if (body.action === "status") return json({ provider: key ? vs.provider : "browser", voice_name: vs.voice_name, configured: !!key });
+    if (body.action === "status") return json({ provider: key ? vs.provider : "browser", voice_name: vs.voice_name, model: vs.model, configured: !!key });
 
     if (body.action === "voices") {
       if (who.me.role !== "owner") return json({ error: "Μόνο η Γενική Διευθύντρια επιλέγει φωνή." }, 403);

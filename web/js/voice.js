@@ -108,6 +108,7 @@ let audioEl = null, audioUrl = null, aborter = null, audioUnlocked = false;
 const SILENT = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
 export function setRemote(r) { remote = r; }
 export const usingRemote = () => !!remote;
+export const remoteInfo = () => remote;
 function audio() {
   if (!audioEl) { audioEl = new Audio(); audioEl.preload = "auto"; audioEl.setAttribute("playsinline", ""); }
   return audioEl;
