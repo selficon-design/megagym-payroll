@@ -377,3 +377,4 @@ table.entry td:first-child{min-width:170px}
 .seg button{border:0;background:transparent;padding:7px 16px;border-radius:999px;font-weight:600;cursor:pointer;color:var(--ink-2);font:inherit;font-size:14px}
 .seg button.on{background:var(--ink);color:#fff}
 .mode-row #mode-hint{flex:1;min-width:200px}
+.el-set{border-top:1px solid var(--line);padding-top:12px;margin-top:4px;display:flex;flex-direction:column;gap:8px}

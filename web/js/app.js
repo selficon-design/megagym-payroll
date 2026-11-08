@@ -3,7 +3,7 @@ import * as voice from "./voice.js";
 import { S, can, role, getStatus, invalidate, setMonth } from "./core.js";
 import { $, $$, h, toast, monthLabel, ROLE_GR, closeDialog } from "./util.js";
 import { overview, pending, prepare, declarations, employees } from "./views-main.js";
-import { tablet, assistant, audit, users, settings, backup, account } from "./views-more.js";
+import { tablet, assistant, audit, users, settings, backup, account, loadVoice } from "./views-more.js";
 import { requests, requestNew, requestView } from "./views-hr.js";
 import { employeeCard } from "./views-card.js";
 import { statsEntry, statsReport } from "./views-stats.js";
@@ -109,6 +109,7 @@ function drawDemoBar() {
 }
 
 async function showApp() {
+  loadVoice();
   S.lists = await S.api.lists();
   $("#login").hidden = true; $("#boot").hidden = true; $("#app").hidden = false;
   $("#global-month").value = S.month;

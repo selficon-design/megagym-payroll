@@ -142,6 +142,79 @@ function md(text) {
   return html;
 }
 
+/** Φωνή του Βοηθού: αν η ΓΔ έχει ρυθμίσει ElevenLabs, ο ήχος έρχεται από τον server (παίζει σωστά και σε iPhone). */
+export async function loadVoice() {
+  voice.setRemote(null);
+  if (S.api.mode === "demo" || !S.api.ttsStatus) return;
+  try {
+    const st = await S.api.ttsStatus();
+    if (st?.provider === "elevenlabs") voice.setRemote({ name: st.voice_name || "ElevenLabs", fetchAudio: (t) => S.api.tts(t), onFallback: (m) => toast(m + " (χρησιμοποιήθηκε η φωνή της συσκευής)", true) });
+  } catch {}
+}
+
+// ── Ρύθμιση φωνής ElevenLabs (μέσα στο «⚙ Φωνή») ──
+const EL_MODELS = [["eleven_multilingual_v2", "Πολύγλωσσο v2 — πιο φυσική φωνή"], ["eleven_flash_v2_5", "Flash v2.5 — πιο γρήγορη απάντηση"]];
+async function drawEleven(afterKey = false) {
+  const box = $("#el-box"); if (!box || S.api.mode === "demo") return;
+  let st = { provider: "browser" };
+  try { st = await S.api.ttsStatus(); } catch {}
+  if (role() !== "owner") {
+    box.innerHTML = `<p class="small" style="margin-top:6px"><strong>Φωνή Βοηθού:</strong> ${st.provider === "elevenlabs" ? `ElevenLabs — ${h(st.voice_name || "")}` : "της συσκευής"}</p>`;
+    return;
+  }
+  let ks = {}; try { ks = (await S.api.voiceKeyStatus()) || {}; } catch {}
+  box.innerHTML = `<div class="el-set"><h4 style="margin:0 0 6px">Φωνή ElevenLabs (για όλους τους χρήστες)</h4>
+    <p class="muted small">Παίζει ως αρχείο ήχου, οπότε δουλεύει σωστά και στο iPhone. Το κλειδί φυλάσσεται στον server και δεν εμφανίζεται ξανά.</p>
+    <div class="vs-row"><label>Κλειδί API</label>${ks.configured ? `<span class="badge b-signed">αποθηκευμένο</span><span class="muted small">${h(ks.updated_by || "")}</span>` : `<span class="badge b-missing">δεν έχει οριστεί</span>`}</div>
+    <div class="vs-row"><input type="password" id="el-key" autocomplete="off" placeholder="${ks.configured ? "Νέο κλειδί (για αντικατάσταση)" : "Επικολλήστε το κλειδί ElevenLabs"}" style="flex:1;min-width:220px">
+      <button class="btn sm primary" id="el-key-save">Αποθήκευση κλειδιού</button>${ks.configured ? `<button class="btn sm danger" id="el-key-del">Διαγραφή</button>` : ""}</div>
+    ${ks.configured ? `<div class="vs-row"><label>Φωνή</label><select id="el-voice"><option value="">${st.voice_name ? h(st.voice_name) + " (τωρινή)" : "— φόρτωση φωνών —"}</option></select><button class="btn sm" id="el-load">Φόρτωση φωνών</button></div>
+      <div class="vs-row"><label>Μοντέλο</label><select id="el-model">${EL_MODELS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
+        <button class="btn sm" id="el-test">▶ Δοκιμή</button><button class="btn sm primary" id="el-use">Χρήση για όλους</button></div>
+      <div class="vs-row"><label>Ενεργή φωνή Βοηθού</label><strong>${st.provider === "elevenlabs" ? `ElevenLabs — ${h(st.voice_name || "")}` : "της συσκευής"}</strong>
+        ${st.provider === "elevenlabs" ? `<button class="btn sm" id="el-off">Επιστροφή στη φωνή της συσκευής</button>` : ""}</div>` : ""}
+    <p class="small" id="el-msg"></p></div>`;
+  const msg = (t, bad) => { $("#el-msg").innerHTML = t; $("#el-msg").style.color = bad ? "var(--bad)" : ""; };
+  let voices = [];
+  $("#el-key-save").onclick = async () => {
+    const k = $("#el-key").value.trim(); if (!k) return msg("Επικολλήστε πρώτα το κλειδί.", true);
+    try { await S.api.voiceSetKey(k); $("#el-key").value = ""; drawEleven(true); }
+    catch (e) { msg(h(e.message), true); }
+  };
+  $("#el-key-del") && ($("#el-key-del").onclick = async () => {
+    if (!(await confirmBox("Διαγραφή κλειδιού", "Ο Βοηθός θα επιστρέψει στη φωνή της συσκευής.", { ok: "Διαγραφή", danger: true }))) return;
+    try { await S.api.voiceSetKey(""); await loadVoice(); drawEleven(); } catch (e) { msg(h(e.message), true); }
+  });
+  if (!ks.configured) return;
+  const fillEl = () => {
+    $("#el-voice").innerHTML = voices.map((v) => `<option value="${h(v.voice_id)}" ${v.name === st.voice_name ? "selected" : ""}>${h(v.name)}${v.description ? " — " + h(v.description) : ""}${v.category === "cloned" ? " (δική σας)" : ""}</option>`).join("") || `<option value="">Δεν βρέθηκαν φωνές</option>`;
+  };
+  const loadVoices = async (first) => {
+    msg("⏳ Φόρτωση φωνών…");
+    try { voices = (await S.api.ttsVoices()).voices; fillEl(); msg(first ? `✓ Το κλειδί λειτουργεί — βρέθηκαν ${voices.length} φωνές. Διαλέξτε φωνή, πατήστε «▶ Δοκιμή» και μετά «Χρήση για όλους».` : `Βρέθηκαν ${voices.length} φωνές.`); }
+    catch (e) { msg((first ? "Το κλειδί αποθηκεύτηκε, αλλά: " : "") + h(e.message), true); }
+  };
+  $("#el-load").onclick = () => loadVoices(false);
+  if (afterKey) loadVoices(true);
+  $("#el-test").onclick = async () => {
+    voice.unlockAudio();
+    const id = $("#el-voice").value; if (!id) return msg("Πατήστε «Φόρτωση φωνών» και διαλέξτε φωνή.", true);
+    msg("⏳ Δοκιμή…");
+    const prev = voice.usingRemote();
+    voice.setRemote({ name: "δοκιμή", fetchAudio: (t) => S.api.tts(t, { voice_id: id, model: $("#el-model").value }), onFallback: (m) => msg("✗ " + h(m), true) });
+    let ok = false;
+    await voice.speak(`Γεια σας, ${S.me.name.split(" ")[0]}. Είμαι ο Βοηθός της MEGA GYM. Ρωτήστε με ό,τι χρειάζεστε για τους εργαζόμενους και τις δηλώσεις.`, { onStart: () => { ok = true; msg("🔊 Παίζει — αν δεν ακούτε, ανεβάστε την ένταση του κινητού."); }, onError: (m) => msg("✗ " + h(m), true) });
+    if (ok) msg("✓ Η δοκιμή ολοκληρώθηκε. Αν σας αρέσει, πατήστε «Χρήση για όλους».");
+    await loadVoice();
+  };
+  $("#el-use").onclick = async () => {
+    const id = $("#el-voice").value; if (!id) return msg("Διαλέξτε φωνή.", true);
+    const name = voices.find((v) => v.voice_id === id)?.name || st.voice_name || "";
+    try { await S.api.voiceSet("elevenlabs", id, name, $("#el-model").value); await loadVoice(); await drawEleven(); toast(`Ο Βοηθός μιλά πλέον με τη φωνή «${name}».`); } catch (e) { msg(h(e.message), true); }
+  };
+  $("#el-off") && ($("#el-off").onclick = async () => { try { await S.api.voiceSet("browser", null, null, null); await loadVoice(); drawEleven(); } catch (e) { msg(h(e.message), true); } });
+}
+
 export async function assistant() {
   const live = S.api.mode !== "demo";
   const sugg = role() === "manager"
@@ -158,6 +231,7 @@ export async function assistant() {
       <label for="vs-rate">Ταχύτητα</label><input type="range" id="vs-rate" min="0.7" max="1.4" step="0.05" value="${P.rate}"><span id="vs-rate-v" class="muted small"></span>
       <button class="btn sm" id="vs-test">▶ Δοκιμή</button></div>
     <p class="muted small" id="vs-note"></p>
+    <div id="el-box"></div>
   </div>
   <div class="card chat"><div class="chat-log" id="ai-log"></div>
     <div class="suggest" id="ai-sugg">${sugg.map((s) => `<button class="chip">${h(s)}</button>`).join("")}</div>
@@ -272,6 +346,7 @@ export async function assistant() {
       : "Δεν βρέθηκε ελληνική φωνή στον υπολογιστή· η ανάγνωση μπορεί να ακούγεται με ξένη προφορά. Στα Windows: Ρυθμίσεις → Ώρα και γλώσσα → Ομιλία → Προσθήκη φωνών → Ελληνικά.";
   };
   fillVoices(); voice.onVoicesReady(fillVoices);
+  drawEleven();
   const rateLbl = () => ($("#vs-rate-v").textContent = `×${Number($("#vs-rate").value).toFixed(2).replace(".", ",")}`);
   rateLbl();
   $("#vs-speak").onchange = (e) => { voice.setPrefs({ speak: e.target.checked }); if (!e.target.checked) voice.stopSpeaking(); };

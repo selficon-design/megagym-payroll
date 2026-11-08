@@ -133,6 +133,13 @@ export async function createSupabaseApi(cfg) {
       return check(await q);
     },
 
+    // Φωνή ElevenLabs (μέσω της λειτουργίας tts· το κλειδί δεν φτάνει ποτέ στον browser)
+    ttsStatus: () => fn("tts", { action: "status" }),
+    ttsVoices: () => fn("tts", { action: "voices" }),
+    async tts(text, opts = {}) { const b = await fn("tts", { action: "speak", text, voice_id: opts.voice_id, model: opts.model }); if (!(b instanceof Blob) || !b.size) throw new Error("Η φωνή δεν επέστρεψε ήχο."); return new Blob([b], { type: "audio/mpeg" }); },
+    voiceKeyStatus: () => rpc("voice_key_status"),
+    voiceSetKey: (key) => rpc("voice_set_key", { p_key: key }),
+    voiceSet: (provider, voiceId, voiceName, model) => rpc("voice_set", { p_provider: provider, p_voice_id: voiceId ?? null, p_voice_name: voiceName ?? null, p_model: model ?? null }),
     async ask(messages, opts = {}) { const r = await fn("ask", { messages, voice: !!opts.voice }); return r.answer; },
     ...hrApi(sb, all, rpc, fn),
   };

@@ -52,7 +52,8 @@
         async invoke(name, { body } = {}) {
           const r = await fetch(url + "/functions/v1/" + name, { method: "POST", headers: { ...headers(), "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
           if (!r.ok) return { data: null, error: { message: "Edge Function returned a non-2xx status code", context: r } };
-          return { data: await r.json(), error: null };
+          const ct = r.headers.get("Content-Type") || "";   // όπως η supabase-js: json / octet-stream (Blob) / κείμενο
+          return { data: ct.includes("json") ? await r.json() : ct.includes("octet-stream") ? await r.blob() : await r.text(), error: null };
         },
       },
       auth: {

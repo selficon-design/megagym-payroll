@@ -101,6 +101,65 @@ function chunks(text) {
   return out;
 }
 let speakId = 0;
+// ─── Φωνή από τον server (ElevenLabs): ο ήχος παίζει ως αρχείο από ΕΝΑ στοιχείο <audio>, που ξεκλειδώνεται
+// στο πρώτο πάτημα. Έτσι στο iPhone παίζει και μετά το μικρόφωνο, όπου η φωνή του browser σωπαίνει.
+let remote = null;              // { fetchAudio(text, signal) → Blob } όταν είναι ρυθμισμένο ElevenLabs
+let audioEl = null, audioUrl = null, aborter = null, audioUnlocked = false;
+const SILENT = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+export function setRemote(r) { remote = r; }
+export const usingRemote = () => !!remote;
+function audio() {
+  if (!audioEl) { audioEl = new Audio(); audioEl.preload = "auto"; audioEl.setAttribute("playsinline", ""); }
+  return audioEl;
+}
+export function unlockAudio() {
+  if (audioUnlocked || typeof Audio === "undefined") return;
+  audioUnlocked = true;
+  try { const a = audio(); a.src = SILENT; const p = a.play(); p?.then(() => a.pause()).catch(() => { audioUnlocked = false; }); } catch { audioUnlocked = false; }
+}
+function playBlob(blob, id, onPlaying) {
+  return new Promise((resolve) => {
+    if (id !== speakId) return resolve("stopped");
+    const a = audio();
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    audioUrl = URL.createObjectURL(blob.type ? blob : new Blob([blob], { type: "audio/mpeg" }));
+    let done = false;
+    const fin = (r) => { if (done) return; done = true; a.onended = a.onerror = a.onplaying = null; resolve(r); };
+    a.onplaying = () => onPlaying?.();
+    a.onended = () => fin(id === speakId ? "ok" : "stopped");
+    a.onerror = () => fin("error");
+    a.src = audioUrl;
+    const p = a.play();
+    if (p) p.catch((e) => fin(e?.name === "AbortError" ? "stopped" : "blocked"));
+  });
+}
+/** Κομμάτια έως ~600 χαρακτήρες: το πρώτο ακούγεται γρήγορα, τα επόμενα φορτώνουν όσο παίζει το προηγούμενο. */
+function bigChunks(text) {
+  const out = []; let cur = "";
+  for (const s of text.match(/[^.;!?·]+[.;!?·]*\s*/g) || [text]) {
+    if ((cur + s).length > (out.length ? 600 : 260) && cur) { out.push(cur.trim()); cur = ""; }
+    cur += s;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+async function speakRemote(text, id, onFirst) {
+  const parts = bigChunks(toSpeech(text));
+  aborter = new AbortController();
+  const signal = aborter.signal;
+  let next = parts.length ? remote.fetchAudio(parts[0], signal) : null;
+  for (let i = 0; i < parts.length; i++) {
+    let blob;
+    try { blob = await next; } catch (e) { if (id !== speakId) return "stopped"; return i === 0 ? { fail: e.message } : "error"; }
+    if (id !== speakId) return "stopped";
+    next = i + 1 < parts.length ? remote.fetchAudio(parts[i + 1], signal) : null;
+    next?.catch(() => {});
+    const r = await playBlob(blob, id, onFirst);
+    if (r === "stopped") return "stopped";
+    if (r !== "ok") return i === 0 ? { fail: r === "blocked" ? "blocked" : "Δεν παίχτηκε ο ήχος." } : "error";
+  }
+  return "ok";
+}
 const keep = new Set();          // κρατά ζωντανές τις εκφωνήσεις (ο Chrome «χάνει» όσες καθαρίζει η μνήμη)
 let unlocked = false;
 /**
@@ -108,7 +167,7 @@ let unlocked = false;
  * αργότερα (π.χ. όταν έρθει η απάντηση) αν δεν έχει προηγηθεί ανάγνωση από πάτημα του χρήστη.
  */
 export function unlock() {
-  if (!canSpeak) return;
+  if (!canSpeak) { unlocked = true; return; }
   try { synth.resume(); } catch {}
   if (unlocked) return;
   unlocked = true;
@@ -118,13 +177,15 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // Ξεκλείδωμα με το ΠΡΩΤΟ πάτημα στη σελίδα που ΔΕΝ ανοίγει μικρόφωνο: η αναπαραγωγή τη στιγμή που ανοίγει
 // το μικρόφωνο εμποδίζει την εγγραφή σε συσκευές Apple (κοινή ρύθμιση ήχου για ηχείο και μικρόφωνο).
 const MIC_STARTERS = "#ai-mic,#voice-fab,#ky-voice,#ex-voice,#vr-rep,#vr-pause";
-if (canSpeak && typeof document !== "undefined") {
+// Στο iPhone ως «χειρονομία χρήστη» μετρά το ολοκληρωμένο άγγιγμα (click/touchend), όχι το πάτημα (pointerdown).
+if (typeof document !== "undefined") {
   const onTap = (e) => {
-    if (unlocked) return document.removeEventListener("pointerdown", onTap, true);
+    if (unlocked && audioUnlocked) { document.removeEventListener("click", onTap, true); document.removeEventListener("touchend", onTap, true); return; }
     if (e.target?.closest?.(MIC_STARTERS)) return;
-    unlock();
+    unlock(); unlockAudio();
   };
-  document.addEventListener("pointerdown", onTap, true);
+  document.addEventListener("click", onTap, true);
+  document.addEventListener("touchend", onTap, true);
 }
 
 /** Μία εκφώνηση· επιστρέφει "ok" | "stopped" | "silent" (δεν ξεκίνησε καθόλου) | "error" */
@@ -150,13 +211,22 @@ function utter(text, v, rate, id, onFirst) {
  * onError(μήνυμα): όταν ο browser δεν παίζει καθόλου ήχο.
  */
 export function speak(text, { onStart, onEnd, onError } = {}) {
-  if (!canSpeak) { onError?.("Αυτός ο browser δεν διαβάζει κείμενο φωναχτά."); onEnd?.(); return Promise.resolve(); }
-  const busy = synth.speaking || synth.pending;
+  if (!canSpeak && !remote) { onError?.("Αυτός ο browser δεν διαβάζει κείμενο φωναχτά."); onEnd?.(); return Promise.resolve(); }
+  const busy = canSpeak && (synth.speaking || synth.pending);
   stopSpeaking();
   const id = ++speakId, parts = chunks(toSpeech(text)), rate = Number(prefs().rate) || 1;
   let v = pickVoice();
   return (async () => {
     if (!parts.length) { onEnd?.(); return; }
+    if (remote) {
+      let first = true;
+      const r = await speakRemote(text, id, () => { if (first) { first = false; onStart?.({ name: remote.name || "ElevenLabs" }); } });
+      if (r === "ok") { if (id === speakId) onEnd?.(); return; }
+      if (r === "stopped" || id !== speakId) return;
+      if (r === "error") { if (id === speakId) onEnd?.(); return; }
+      // Δεν έπαιξε καθόλου: δοκιμή με τη φωνή της συσκευής, με ενημέρωση
+      remote.onFallback?.(r.fail === "blocked" ? "Η συσκευή μπλόκαρε τον ήχο· πατήστε 🔊 για ακρόαση." : r.fail);
+    }
     if (busy) await wait(150);                      // ο Chrome χάνει ανάγνωση που ξεκινά αμέσως μετά από διακοπή
     const sinceMic = Date.now() - lastMicEnd;
     if (sinceMic < 700) await wait(700 - sinceMic); // μετά το μικρόφωνο η συσκευή χρειάζεται λίγο να γυρίσει σε αναπαραγωγή
@@ -178,8 +248,13 @@ export function speak(text, { onStart, onEnd, onError } = {}) {
     if (id === speakId) onEnd?.();
   })();
 }
-export function stopSpeaking() { speakId++; if (canSpeak) { try { synth.cancel(); } catch {} } }
-export const isSpeaking = () => canSpeak && (synth.speaking || synth.pending);
+export function stopSpeaking() {
+  speakId++;
+  try { aborter?.abort(); } catch {}
+  if (audioEl && !audioEl.paused) { try { audioEl.pause(); } catch {} }
+  if (canSpeak) { try { synth.cancel(); } catch {} }
+}
+export const isSpeaking = () => (audioEl && !audioEl.paused && !audioEl.ended && audioEl.src !== SILENT) || (canSpeak && (synth.speaking || synth.pending));
 
 /** Στοιχεία για τη «Δοκιμή» φωνής. */
 export function diag() {
