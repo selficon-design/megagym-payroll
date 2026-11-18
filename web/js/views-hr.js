@@ -277,6 +277,7 @@ export async function requestView(params) {
   const [r, R] = await Promise.all([S.api.request(id), hrRefs()]);
   S.api.notifRead(id).then((n) => { if (n) window.dispatchEvent(new Event("mg:answers")); }).catch(() => {});
   const isLeave = ["leave", "leave_change"].includes(r.category);
+  const fromCal = params.get("from") === "leaves" && can.leave(); // ήρθε από το ημερολόγιο αδειών: κουμπί επιστροφής
   const [L, T] = await Promise.all([isLeave ? S.api.leaveCheck(id).catch(() => null) : null, can.decide() ? S.api.requestTasks(id).catch(() => []) : []]);
   const flow = flowOf(r.category);
   const cur = r.decisions.find((x) => !x.superseded_at);
@@ -333,7 +334,7 @@ export async function requestView(params) {
   <div class="page-head"><div><div class="eyebrow">${h(r.ref)} · ${r.process === "manager" ? "Αναφορά manager" : "Αίτημα εργαζομένου"}</div>
     <h1>${h(CATEGORIES[r.category])}${r.leave_type_label ? ` · ${h(r.leave_type_label)}` : ""}</h1>
     <p class="muted">${reqBadge(r.status)} <a href="#/employee?code=${encodeURIComponent(r.employee_code)}"><strong>${h(r.employee_name)}</strong></a> · ${h(r.employee_code)} · ${h(r.store)} · ${h(r.company)}${r.specialty ? " · " + h(r.specialty) : ""}</p></div>
-    <a class="btn" href="#/requests">← Αιτήματα</a></div>
+    <div class="row-actions">${fromCal ? `<a class="btn primary" id="rv-cal" href="#/leaves?tab=cal">← Ημερολόγιο αδειών</a>` : ""}<a class="btn" href="#/requests">${fromCal ? "Αιτήματα" : "← Αιτήματα"}</a>${!fromCal && isLeave && can.leave() ? `<a class="btn" href="#/leaves?tab=cal">Ημερολόγιο αδειών</a>` : ""}</div></div>
   <div class="note" style="margin-bottom:16px">${h(FLOW_NOTE[flow])}</div>
   <div class="grid g2-1">
     <div>

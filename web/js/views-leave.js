@@ -46,7 +46,7 @@ async function calendarTab(body) {
   const H = Object.fromEntries(hol.map((x) => [x.day, x.label]));
   const byDay = {}; for (const r of rows) (byDay[r.day] ??= []).push(r);
   const emps = [...new Map(rows.map((r) => [r.employee_code, r.employee_name])).entries()];
-  const chip = (r) => `<a class="lv-chip ${r.status}" href="#/request?id=${h(r.request_id)}" style="--c:${empColor(r.employee_code)}" title="${h(r.employee_name)} · ${h(r.label || "")} · ${STATUS_GR[r.status]} · ${h(r.ref)}">
+  const chip = (r) => `<a class="lv-chip ${r.status}" href="#/request?id=${h(r.request_id)}&from=leaves" style="--c:${empColor(r.employee_code)}" title="${h(r.employee_name)} · ${h(r.label || "")} · ${STATUS_GR[r.status]} · ${h(r.ref)}">
       <span class="mk" aria-hidden="true">${STATUS_MARK[r.status]}</span>${h(r.employee_name)}<span class="sr">${STATUS_GR[r.status]}</span></a>`;
   let grid;
   if (F.mode === "month") {
