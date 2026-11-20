@@ -15,9 +15,9 @@ export const role = () => S.me?.role;
 // Δικαιώματα: έρχονται από τον server (whoami → perms, ίδιος πίνακας που ελέγχει κάθε ενέργεια).
 // Στη λειτουργία επίδειξης (χωρίς server) χρησιμοποιούνται οι αρχικές ρυθμίσεις ανά ρόλο.
 const DEMO_PERMS = {
-  owner: ["payroll.view", "payroll.prepare", "payroll.sign", "payroll.void", "payroll.pdf", "payroll.bulk", "payroll.backup", "employees.view", "employees.edit", "audit.view", "users.manage", "settings.manage", "ai.assistant"],
-  hr: ["payroll.view", "payroll.prepare", "employees.view", "employees.edit", "audit.view", "ai.assistant"],
-  manager: ["payroll.view", "payroll.prepare", "payroll.sign", "employees.view", "ai.assistant"],
+  owner: ["payroll.view", "payroll.prepare", "payroll.sign", "payroll.void", "payroll.pdf", "payroll.bulk", "payroll.backup", "employees.view", "employees.edit", "audit.view", "users.manage", "settings.manage", "ai.assistant", "guide.view"],
+  hr: ["payroll.view", "payroll.prepare", "employees.view", "employees.edit", "audit.view", "ai.assistant", "guide.view"],
+  manager: ["payroll.view", "payroll.prepare", "payroll.sign", "employees.view", "ai.assistant", "guide.view"],
 };
 export const perms = () => S.me?.perms || DEMO_PERMS[role()] || [];
 export const P = (p) => perms().includes(p);

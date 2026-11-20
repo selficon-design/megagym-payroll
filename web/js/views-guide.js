@@ -1,6 +1,7 @@
-// Οδηγός χρήσης μέσα στην εφαρμογή. Το κείμενο είναι το web/guide.md, που δημοσιεύεται με κάθε έκδοση,
-// οπότε ο οδηγός είναι πάντα αυτός της τρέχουσας έκδοσης. Ορατός σε όλους τους ρόλους (δεν περιέχει δεδομένα).
+// Οδηγός χρήσης μέσα στην εφαρμογή. Το κείμενο (docs/guide.md) το δίνει η λειτουργία server «guide» μόνο σε όσους
+// έχουν το δικαίωμα «Οδηγός χρήσης» (πίνακας Ρόλοι & Δικαιώματα)· δημοσιεύεται με κάθε έκδοση.
 import { $, $$, h, toast } from "./util.js";
+import { S } from "./core.js";
 import { APP_VERSION } from "./version.js";
 
 const view = () => $("#view");
@@ -73,12 +74,8 @@ export function renderMarkdown(md) {
 export async function guide() {
   view().innerHTML = `<div class="empty"><div class="spinner"></div></div>`;
   try {
-    if (!cache) {
-      const r = await fetch(`guide.md?v=${encodeURIComponent(APP_VERSION)}`, { cache: "no-cache" });
-      if (!r.ok) throw new Error(r.status);
-      cache = await r.text();
-    }
-  } catch { return (view().innerHTML = `<div class="card empty">Ο οδηγός δεν φόρτωσε. Ελέγξτε τη σύνδεση και δοκιμάστε ξανά.</div>`); }
+    cache = await S.api.guide(); // κάθε φορά από τον server, που ελέγχει το δικαίωμα «Οδηγός χρήσης»
+  } catch (e) { return (view().innerHTML = `<div class="card empty">${h(e.message || "Ο οδηγός δεν φόρτωσε. Ελέγξτε τη σύνδεση και δοκιμάστε ξανά.")}</div>`); }
   const ver = (cache.match(/GUIDE_VERSION:\s*([^\n]*?)\s*-->/) || [])[1] || APP_VERSION;
   const { html, toc } = renderMarkdown(cache);
   view().innerHTML = `

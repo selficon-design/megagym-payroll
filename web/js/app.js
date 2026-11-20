@@ -1,6 +1,6 @@
 import * as voice from "./voice.js";
 // Εκκίνηση εφαρμογής, μενού και πλοήγηση
-import { S, can, role, getStatus, invalidate, setMonth } from "./core.js";
+import { S, can, role, getStatus, invalidate, setMonth, P } from "./core.js";
 import { $, $$, h, toast, monthLabel, ROLE_GR, closeDialog } from "./util.js";
 import { overview, pending, prepare, declarations, employees } from "./views-main.js";
 import { tablet, assistant, audit, users, settings, backup, account, loadVoice } from "./views-more.js";
@@ -40,7 +40,7 @@ const ROUTES = [
   { id: "permissions", title: "Ρόλοι & Δικαιώματα", ico: "⚖", group: "Διαχείριση", render: permissionsView, show: () => can.permissions() && live() },
   { id: "settings", title: "Ρυθμίσεις", ico: "⚙", group: "Διαχείριση", render: settings, show: can.settings },
   { id: "account", title: "Ο λογαριασμός μου", ico: "◉", group: "Λογαριασμός", render: account, show: () => true },
-  { id: "guide", title: "Οδηγός χρήσης", ico: "?", group: "Λογαριασμός", render: guide, show: () => true },
+  { id: "guide", title: "Οδηγός χρήσης", ico: "?", group: "Λογαριασμός", render: guide, show: () => P("guide.view") },
   // Σελίδες χωρίς δική τους θέση στο μενού
   { id: "request", title: "Αίτημα", group: "", render: requestView, show: () => can.requests() && live(), hidden: true, parent: "requests" },
   { id: "request-new", title: "Νέο αίτημα", group: "", render: requestNew, show: () => can.createRequests() && live(), hidden: true, parent: "requests" },

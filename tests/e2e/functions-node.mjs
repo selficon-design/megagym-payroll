@@ -6,7 +6,7 @@ const SHIM = new URL("./supabase-deno.mjs", import.meta.url).href;
 register("data:text/javascript," + encodeURIComponent(`export async function resolve(s, c, n) { return s === "jsr:@supabase/supabase-js@2" ? n(${JSON.stringify(SHIM)}, c) : n(s, c); }`));
 const handlers = {}; let current = null;
 globalThis.Deno = { env: { get: (k) => process.env[k] }, serve: (h) => { handlers[current] = h; } };
-for (const name of ["admin-users", "ask", "answer-key", "tts"]) {
+for (const name of ["admin-users", "ask", "answer-key", "tts", "guide"]) {
   current = name;
   try { await import(new URL(`../../supabase/functions/${name}/index.ts`, import.meta.url).href); } catch (e) { console.error("load", name, e.message); }
 }

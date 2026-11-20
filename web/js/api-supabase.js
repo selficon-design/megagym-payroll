@@ -142,6 +142,7 @@ export async function createSupabaseApi(cfg) {
     voiceKeyStatus: () => rpc("voice_key_status"),
     voiceSetKey: (key) => rpc("voice_set_key", { p_key: key }),
     voiceSet: (provider, voiceId, voiceName, model) => rpc("voice_set", { p_provider: provider, p_voice_id: voiceId ?? null, p_voice_name: voiceName ?? null, p_model: model ?? null }),
+    async guide() { return (await fn("guide", {})).markdown; },
     async ask(messages, opts = {}) { const r = await fn("ask", { messages, voice: !!opts.voice }); return opts.full ? r : r.answer; },
     ...hrApi(sb, all, rpc, fn),
   };
