@@ -1,6 +1,6 @@
 // Οδηγός χρήσης μέσα στην εφαρμογή. Το κείμενο είναι το web/guide.md, που δημοσιεύεται με κάθε έκδοση,
 // οπότε ο οδηγός είναι πάντα αυτός της τρέχουσας έκδοσης. Ορατός σε όλους τους ρόλους (δεν περιέχει δεδομένα).
-import { $, $$, h } from "./util.js";
+import { $, $$, h, toast } from "./util.js";
 import { APP_VERSION } from "./version.js";
 
 const view = () => $("#view");
@@ -84,13 +84,19 @@ export async function guide() {
   view().innerHTML = `
   <div class="page-head"><div><div class="eyebrow">Βοήθεια</div><h1>Οδηγός χρήσης</h1>
     <p class="muted">Έκδοση ${h(ver)}. Ενημερώνεται αυτόματα με κάθε νέα έκδοση της εφαρμογής.</p></div>
-    <button class="btn" id="g-print">Εκτύπωση</button></div>
+    <div class="row-actions"><button class="btn primary" id="g-pdf">⇩ PDF</button><button class="btn" id="g-print">Εκτύπωση</button></div></div>
   <div class="card g-tools"><input id="g-q" type="search" placeholder="Αναζήτηση στον οδηγό (π.χ. άδεια, PDF, πρόγραμμα)…" aria-label="Αναζήτηση στον οδηγό">
     <nav class="g-toc" aria-label="Περιεχόμενα">${toc.map((t) => `<a href="#" data-g="${t.id}">${inline(t.txt)}</a>`).join("")}</nav></div>
   <div class="card guide" id="g-body">${html}</div>
   <p class="muted small" id="g-none" hidden>Δεν βρέθηκε κάτι. Δοκιμάστε άλλη λέξη.</p>`;
   $$("[data-g]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); document.getElementById(a.dataset.g)?.scrollIntoView({ behavior: "smooth", block: "start" }); }));
   $("#g-print").onclick = () => window.print();
+  $("#g-pdf").onclick = async (e) => {
+    const b = e.currentTarget; b.disabled = true; b.textContent = "Δημιουργία PDF…";
+    try { const { guidePdf } = await import("./guide-pdf.js"); const r = await guidePdf(cache, ver); toast(`Το PDF κατέβηκε (${r.pages} σελίδες).`); }
+    catch (err) { toast("Το PDF δεν δημιουργήθηκε: " + (err.message || err), true); }
+    finally { if (b.isConnected) { b.disabled = false; b.textContent = "⇩ PDF"; } }
+  };
   const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
   $("#g-q").oninput = (e) => {
     const q = norm(e.target.value.trim());

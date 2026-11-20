@@ -454,4 +454,4 @@ table.entry td:first-child{min-width:170px}
 .guide h3{margin:18px 0 6px;font-size:16px}.guide p{margin:8px 0}.guide ul,.guide ol{margin:6px 0 10px;padding-left:22px}.guide li{margin:3px 0}
 .guide table{font-size:13.5px}.guide td,.guide th{vertical-align:top}.guide code{background:rgba(0,0,0,.05);padding:1px 4px;border-radius:4px;font-size:.92em}
 .g-sec{scroll-margin-top:72px}
-@media print{#nav,.topbar,.g-tools,#g-print,.fab{display:none!important}.guide{max-width:none;border:0;box-shadow:none}}
+@media print{#nav,.topbar,.g-tools,#g-print,#g-pdf,.fab{display:none!important}.guide{max-width:none;border:0;box-shadow:none}}
