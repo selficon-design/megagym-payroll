@@ -12,6 +12,7 @@ import { templates } from "./views-admin.js";
 import { leaves, answers, tasks, refreshAnswers } from "./views-leave.js";
 import { schedule } from "./views-schedule.js";
 import { permissionsView } from "./views-perms.js";
+import { guide } from "./views-guide.js";
 import { afterFillReturn } from "./fill-launch.js";
 
 const live = () => S.api?.mode !== "demo";
@@ -39,6 +40,7 @@ const ROUTES = [
   { id: "permissions", title: "Ρόλοι & Δικαιώματα", ico: "⚖", group: "Διαχείριση", render: permissionsView, show: () => can.permissions() && live() },
   { id: "settings", title: "Ρυθμίσεις", ico: "⚙", group: "Διαχείριση", render: settings, show: can.settings },
   { id: "account", title: "Ο λογαριασμός μου", ico: "◉", group: "Λογαριασμός", render: account, show: () => true },
+  { id: "guide", title: "Οδηγός χρήσης", ico: "?", group: "Λογαριασμός", render: guide, show: () => true },
   // Σελίδες χωρίς δική τους θέση στο μενού
   { id: "request", title: "Αίτημα", group: "", render: requestView, show: () => can.requests() && live(), hidden: true, parent: "requests" },
   { id: "request-new", title: "Νέο αίτημα", group: "", render: requestNew, show: () => can.createRequests() && live(), hidden: true, parent: "requests" },

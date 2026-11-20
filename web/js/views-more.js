@@ -1,3 +1,4 @@
+import { APP_VERSION_LABEL } from "./version.js";
 // Οθόνες: Tablet καταστήματος, Βοηθός AI, Ιστορικό, Χρήστες, Ρυθμίσεις, Backup, Λογαριασμός
 import * as voice from "./voice.js";
 import { S, can, role, getStatus, invalidate, visibleStores, activeStores } from "./core.js";
@@ -578,7 +579,7 @@ export async function settings() {
   <div class="grid g2">${block("Καταστήματα", "store", S.lists.stores)}${block("Εταιρείες", "company", S.lists.companies)}</div>
   ${specialtiesBlock()}
   ${S.api.mode === "demo" ? "" : `<div class="card" style="margin-top:16px"><div class="card-head"><h3>Πρότυπα κειμένων</h3><a class="btn sm primary" href="#/templates">Άνοιγμα →</a></div><p class="muted small">Κείμενα αιτήσεων, εγκρίσεων, απορρίψεων, διευκρινίσεων, είδη άδειας και λόγοι απόρριψης, με ιστορικό εκδόσεων.</p></div>`}
-  <div class="card" style="margin-top:16px"><h3>Πληροφορίες</h3><dl class="kv"><dt>Λειτουργία</dt><dd>${S.api.mode === "demo" ? "Επίδειξη (τοπικά δεδομένα)" : "Σύνδεση με βάση Supabase"}</dd><dt>Έκδοση</dt><dd>3.0 · Άδειες, πρόγραμμα, δικαιώματα</dd></dl></div>`;
+  <div class="card" style="margin-top:16px"><h3>Πληροφορίες</h3><dl class="kv"><dt>Λειτουργία</dt><dd>${S.api.mode === "demo" ? "Επίδειξη (τοπικά δεδομένα)" : "Σύνδεση με βάση Supabase"}</dd><dt>Έκδοση</dt><dd>${APP_VERSION_LABEL} · <a href="#/guide">Οδηγός χρήσης</a></dd></dl></div>`;
   const reload = async () => { S.lists = await S.api.lists(); settings(); };
   bindSpecialties(reload);
   $$("[data-tog]").forEach((b) => (b.onclick = async () => {

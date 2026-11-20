@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Έλεγχος τύπων στατιστικών
-        run: node --test tests/js/stats-calc.test.mjs
+        run: node --test tests/js/stats-calc.test.mjs tests/js/guide.test.mjs
       - run: ./tests/run.sh
         env:
           PGHOST: localhost
