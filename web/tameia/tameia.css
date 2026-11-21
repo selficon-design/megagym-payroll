@@ -51,15 +51,15 @@ tr.voided td strong{text-decoration:line-through}
 .perm-table th.c,.perm-table td.c{width:110px}
 .cash-table td{vertical-align:top}
 
-/* ═══ Ταυτότητα Ταμείων: σκούρο μπλε (η εφαρμογή HR έχει μαύρο) ═══ */
-:root{--side:#0b1f3d;--side-2:#173462;--side-ink:#c9d6ea}
-.side-foot{border-top-color:#1c3560}
-.me-box .role-chip{background:#173462}
-.boot{background:#0b1f3d}
-.login{background:radial-gradient(1200px 600px at 20% -10%,#1d3f73 0,#08172e 60%)}
-.kiosk,.k-head{background:#0b1f3d}
-.k-head{border-bottom-color:#1c3560}
-.side-head .app-tag{display:block;margin-top:6px;font-size:11.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#8fb3ff}
+/* ═══ Ταυτότητα Ταμείων: σκούρο πράσινο (η εφαρμογή HR έχει μαύρο) ═══ */
+:root{--side:#0b2a1e;--side-2:#164a33;--side-ink:#cfe3d8}
+.side-foot{border-top-color:#1b4a35}
+.me-box .role-chip{background:#164a33}
+.boot{background:#0b2a1e}
+.login{background:radial-gradient(1200px 600px at 20% -10%,#1f5a3d 0,#06190f 60%)}
+.kiosk,.k-head{background:#0b2a1e}
+.k-head{border-bottom-color:#1b4a35}
+.side-head .app-tag{display:block;margin-top:6px;font-size:11.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#7fd6a4}
 .theme-btn{display:inline-flex;align-items:center;gap:6px}
 
 /* ═══ Νυχτερινή εμφάνιση ═══ */
@@ -68,7 +68,7 @@ html[data-theme=dark]{
   --bg:#0c1525; --card:#131f34;
   --ok:#3ccf7a; --ok-soft:#123222; --warn:#f0a63a; --warn-soft:#3a2b12; --bad:#ff6b5b; --bad-soft:#3d1c1a;
   --info:#7aa8ff; --info-soft:#17294a; --accent-soft:#3a3112;
-  --side:#071730; --side-2:#14305c;
+  --side:#071d14; --side-2:#14432e;
   --shadow:0 1px 2px rgba(0,0,0,.4);
   color-scheme:dark;
 }
