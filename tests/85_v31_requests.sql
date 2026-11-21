@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP 1
 -- Έκδοση 3.1 · Exit Interview/ερωτηματολόγια έως 12 επιλογές (Α..ΙΒ), «Αναρρωτική Άδεια» ως κύρια κατηγορία
--- με ασφαλή μεταφορά των παλιών, αλλαγή ημερομηνιών εκκρεμούς άδειας από manager (αναθεωρήσεις), μερική
--- έγκριση από HR/ΓΔ (μόνο συγκεκριμένες ημέρες ή άλλες ημερομηνίες) με υποχρεωτική αιτιολογία.
+-- με ασφαλή μεταφορά των παλιών, αλλαγή ημερομηνιών εκκρεμούς άδειας από manager (αναθεωρήσεις), τμηματική
+-- έγκριση από HR/ΓΔ (μόνο συγκεκριμένες ημέρες ή άλλες ημερομηνίες)· η αιτιολογία είναι προαιρετική (απόφαση 21/11).
 -- ΟΛΑ ΤΑ ΣΤΟΙΧΕΙΑ ΕΙΝΑΙ ΕΙΚΟΝΙΚΑ.
 insert into app_users(email,name,role,store) values
  ('owner@x.gr','ΓΔ','owner',null),('hr@x.gr','HR','hr',null),('acc@x.gr','Λογιστήριο','accounting',null),
@@ -92,8 +92,6 @@ select pg_temp.expect_fail(format($$select req_decide(%L,'approve','{"message":"
 
 -- ═══════ 10. Μερική έγκριση: μόνο συγκεκριμένες ημέρες ═══════
 select pg_temp.eq((leave_preview('R1','2026-12-14','2026-12-17','annual',:'lv','{2026-12-14,2026-12-15}'::date[])->>'requested')::numeric, 2::numeric, 'προεπισκόπηση: χρέωση μόνο των επιλεγμένων ημερών');
-select pg_temp.expect_fail(format($$select req_decide(%L,'approve','{"message":"Το αίτημα εγκρίθηκε μερικώς.","include":["2026-12-14","2026-12-15"]}',%s)$$, :'lv', pg_temp.ver(:'lv')),
-  'μερική έγκριση χωρίς αιτιολογία διαφοροποίησης');
 select pg_temp.expect_fail(format($$select req_decide(%L,'approve','{"message":"Το αίτημα εγκρίθηκε.","include":[],"diff_reason":"Κάλυψη προγράμματος"}',%s)$$, :'lv', pg_temp.ver(:'lv')),
   'έγκριση χωρίς καμία ημέρα');
 select pg_temp.expect_fail(format($$select req_decide(%L,'approve','{"message":"Το αίτημα εγκρίθηκε.","include":["2026-12-21"],"diff_reason":"Κάλυψη προγράμματος"}',%s)$$, :'lv', pg_temp.ver(:'lv')),
@@ -104,16 +102,14 @@ select pg_temp.eq((select sum(c.amount) from leave_charges c join leave_days d o
 select pg_temp.eq((select requested_start||'|'||requested_end||'|'||requested_days||'|'||approved_days||'|'||jsonb_array_length(approved_dates)||'|'||date_revision||'|'||(diff_reason is not null)
    from hr_decisions where request_id = :'lv' and superseded_at is null), '2026-12-14|2026-12-17|4.0|2.0|2|2|true', 'αποθηκεύονται αιτούμενες vs εγκεκριμένες ημέρες και η αιτιολογία');
 select pg_temp.as_user('glyfada@x.gr');
-select pg_temp.eq((select count(*) from notifications where user_email = 'glyfada@x.gr' and request_id = :'lv' and title like '%τελικές ημερομηνίες 14/12, 15/12/2026 (2 ημέρες)%διαφέρουν από τις αιτούμενες%'), 1::bigint,
+select pg_temp.eq((select count(*) from notifications where user_email = 'glyfada@x.gr' and request_id = :'lv' and title like '%τελικές ημερομηνίες 14/12, 15/12/2026 (2 ημέρες)%εγκρίθηκαν μόνο ορισμένες από τις αιτούμενες ημερομηνίες%'), 1::bigint,
   'ο manager ενημερώνεται για τις τελικές ημερομηνίες');
 select pg_temp.expect_fail(format($$select req_change_dates(%L,'2026-12-21','2026-12-22',2,'Αλλαγή μετά την έγκριση',%s)$$, :'lv', pg_temp.ver(:'lv')), 'εγκεκριμένη άδεια: μόνο με τη ροή νέας έγκρισης');
 
--- ═══════ 10β. Έγκριση με άλλες ημερομηνίες (λιγότερες ημέρες) ═══════
+-- ═══════ 10β. Έγκριση με άλλες ημερομηνίες (λιγότερες ημέρες) — η αιτιολογία είναι προαιρετική ═══════
 select pg_temp.leave('R2','leave','annual','2026-12-07','2026-12-11','5') as lv2 \gset
 select pg_temp.as_user('owner@x.gr');
-select pg_temp.expect_fail(format($$select req_decide(%L,'approve','{"message":"Εγκρίνεται με άλλες ημερομηνίες.","approved_start":"2026-12-09","approved_end":"2026-12-10"}',%s)$$, :'lv2', pg_temp.ver(:'lv2')),
-  'άλλες ημερομηνίες χωρίς αιτιολογία');
-select req_decide(:'lv2', 'approve', '{"message":"Εγκρίνεται με άλλες ημερομηνίες.","approved_start":"2026-12-09","approved_end":"2026-12-10","diff_reason":"Αιχμή επισκεψιμότητας στις αρχές της εβδομάδας"}', pg_temp.ver(:'lv2'));
+select req_decide(:'lv2', 'approve', '{"message":"Εγκρίνεται με άλλες ημερομηνίες.","approved_start":"2026-12-09","approved_end":"2026-12-10"}', pg_temp.ver(:'lv2'));
 select pg_temp.eq((select count(*) from leave_days where request_id = :'lv2' and status = 'active'), 2::bigint, 'κρατήθηκαν μόνο οι 2 εγκεκριμένες ημέρες');
 select pg_temp.eq((select requested_start||'|'||approved_start||'|'||approved_end from hr_decisions where request_id = :'lv2' and superseded_at is null), '2026-12-07|2026-12-09|2026-12-10', 'αρχικές και τελικές ημερομηνίες χωριστά');
 

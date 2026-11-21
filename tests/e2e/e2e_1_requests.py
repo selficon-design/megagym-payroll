@@ -108,14 +108,10 @@ with sync_playwright() as p:
     # ── ΓΔ: αναθεώρηση άδειας & απόφαση προειδοποίησης
     pg = new_page(b); login(pg, "owner@test.gr"); go(pg, f"#/request?id={leave1}")
     pg.click("[data-act=decide]"); pg.wait_for_selector("#dd-s")
-    pg.click("#dd-mode [data-m=other]"); pg.wait_for_timeout(400)   # 3.1: «Άλλες ημερομηνίες»
     pg.fill("#dd-e", "2026-12-03"); pg.dispatch_event("#dd-e", "change"); pg.wait_for_timeout(900); pg.wait_for_selector("#dd-plan select")
-    pg.wait_for_function("document.querySelector('#dd-msg').value.includes('έως και 03/12/2026')", timeout=8000)
+    pg.wait_for_function("document.querySelector('#dd-msg').value.includes('έως και 03/12/2026, συνολικά 3')", timeout=8000)
     check("από 01/12/2026 έως και 03/12/2026, συνολικά 3 ημέρες" in pg.input_value("#dd-msg"), "αναθεώρηση: κείμενο έγκρισης με εγκεκριμένες ημερομηνίες")
-    check(pg.is_visible("#dd-diffbox") and "Δεν εγκρίνονται" in pg.inner_text("#dd-cmp"), "3.1: σύγκριση αιτούμενων/τελικών ημερών πριν από την απόφαση")
-    pg.click("#dd-ok"); pg.wait_for_timeout(500)
-    check("αιτιολογία διαφοροποίησης" in pg.inner_text("#dd-m"), "3.1: υποχρεωτική αιτιολογία διαφοροποίησης")
-    pg.fill("#dd-diff", "Κάλυψη προγράμματος στις 4–5/12")
+    check(not pg.query_selector("#dd-mode") and not pg.query_selector("#dd-diff"), "έγκριση όπως στην 3.0: χωρίς υποχρεωτική αιτιολογία ή κλείδωμα ημερομηνιών")
     pg.click("#dd-ok"); pg.wait_for_timeout(800)
     t = pg.inner_text("#view")
     check("Εγκρίθηκε" in t and "Απόρριψη" in t and "αντικαταστάθηκε" in t and "Έγκριση · αναθεώρηση" in t, "αναθεώρηση: η προηγούμενη απόφαση μένει στο ιστορικό")

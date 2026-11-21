@@ -36,16 +36,18 @@ with sync_playwright() as p:
     req = m.evaluate("location.hash").split("id=")[1].split("&")[0]
     no_js_errors(m, "manager αίτημα"); m.context.close()
 
-    # ══ 2. HR: μερική έγκριση με επιλογή ημερών ══
+    # ══ 2. HR: τμηματική έγκριση με επιλογή ημερών (χωρίς αιτιολογία) ══
     h = new_page(b); login(h, "hr@test.gr"); go(h, f"#/request?id={req}")
-    h.click("[data-act=decide]"); h.wait_for_selector("#dd-mode")
-    h.click("#dd-mode [data-m=some]"); h.wait_for_selector(".dd-inc")
+    h.click("[data-act=decide]"); h.wait_for_selector("#dd-some")
+    check(not h.is_disabled("#dd-s") and not h.query_selector("#dd-diff"), "έγκριση όπως στην 3.0: επεξεργάσιμες ημερομηνίες, χωρίς υποχρεωτική αιτιολογία")
+    h.wait_for_selector("#dd-plan select")
+    h.check("#dd-some"); h.wait_for_selector(".dd-inc")
     h.uncheck(f'.dd-inc[data-day="{d(3)}"]'); h.wait_for_timeout(300)
-    check("Δεν εγκρίνονται" in h.inner_text("#dd-cmp") and h.is_visible("#dd-diffbox"), "μερική έγκριση: σύγκριση και πεδίο αιτιολογίας")
-    h.fill("#dd-diff", "Δεν καλύπτεται το πρόγραμμα της τελευταίας ημέρας"); h.click("#dd-ok"); h.wait_for_timeout(900)
+    check("δεν εγκρίνεται" in h.text_content("#dd-plan") and h.is_visible("#dd-note"), "τμηματική έγκριση: η ημέρα σημειώνεται «δεν εγκρίνεται», σημείωση προαιρετική")
+    h.click("#dd-ok"); h.wait_for_timeout(900)
     check("δεν εγκρίθηκαν" in h.inner_text("#view"), "η απόφαση δείχνει τις ημέρες που δεν εγκρίθηκαν")
     check(sql(f"select count(*) from leave_days where request_id = '{req}' and status = 'active'")[-1] == "2", "μόνο οι εγκεκριμένες ημέρες καταχωρίστηκαν")
-    no_js_errors(h, "HR μερική έγκριση"); h.context.close()
+    no_js_errors(h, "HR τμηματική έγκριση"); h.context.close()
 
     # ══ 3. Manager: Ρεπό, διαγραφή ωραρίου, μετά την οριστικοποίηση → ειδοποίηση λογιστηρίου ══
     m = new_page(b); login(m, "glyfada@test.gr")
