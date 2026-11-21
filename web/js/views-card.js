@@ -5,6 +5,7 @@ import { $, $$, h, dmy, money, monthLabel, badge, toast, openDialog, closeDialog
 import { athensToday as todayA } from "./hr-common.js";
 import { num2, settleDialog, downloadSettlementDoc } from "./views-leave.js";
 import { CATEGORIES, flowOf, reqBadge, attemptBadge, athens, daysWord, demoNotice } from "./hr-common.js";
+import { cardImprovement } from "./views-improvement.js";
 import { KINDS, FIELD_SHORT, totals, metrics, fmtPct, warnings } from "./stats-calc.js";
 import { viewDeclaration } from "./views-main.js";
 import { attemptDialog } from "./views-assess.js";
@@ -26,6 +27,7 @@ export async function employeeCard(params) {
     ["reports", "Αναφορές & προειδοποιήσεις", can.requests()],
     ["stats", "Ημερήσια στατιστικά", P("stats.view") || can.statsReports()],
     ["assess", "Αξιολογήσεις", can.assessOpen() || can.assessResults()],
+    ["improvement", "Βελτίωση & συνεργασία", P("improvement.view")],
   ].filter((t) => t[2]);
   const t = TABS.some((x) => x[0] === tab) ? tab : TABS[0][0];
 
@@ -36,7 +38,7 @@ export async function employeeCard(params) {
   <div class="tabs">${TABS.map(([k, l]) => `<a href="#/employee?code=${encodeURIComponent(code)}&tab=${k}" class="${k === t ? "on" : ""}">${l}</a>`).join("")}</div>
   <div id="card-body"><div class="empty"><div class="spinner"></div></div></div>`;
   const body = $("#card-body");
-  try { await ({ info, payroll, requests: reqs, leave, reports, stats, assess })[t](e, body, params); }
+  try { await ({ info, payroll, requests: reqs, leave, reports, stats, assess, improvement: cardImprovement })[t](e, body, params); }
   catch (err) { body.innerHTML = `<div class="card note bad">${h(err.message)}</div>`; }
 }
 
@@ -110,13 +112,13 @@ const bindRows = (body) => $$("tr.click", body).forEach((tr) => (tr.onclick = ()
 
 async function reqs(e, body) {
   const { visible, cur } = await loadReqs(e);
-  body.innerHTML = `<div class="card">${reqTable(visible.filter((x) => x.process === "employee" && x.category !== "leave"), cur)}</div>`;
+  body.innerHTML = `<div class="card">${reqTable(visible.filter((x) => x.process === "employee" && !["leave", "sick_leave", "leave_change"].includes(x.category)), cur)}</div>`;
   bindRows(body);
 }
 async function leave(e, body, params) {
   const asOf = params.get("asof") || todayA();
   const [{ visible, cur }, C] = await Promise.all([can.requests() ? loadReqs(e) : { visible: [], cur: {} }, can.leave() ? S.api.leaveCard(e.code, asOf).catch((err) => ({ error: err.message })) : null]);
-  const rows = visible.filter((x) => ["leave", "leave_change"].includes(x.category));
+  const rows = visible.filter((x) => ["leave", "sick_leave", "leave_change"].includes(x.category));
   const B = C?.balance, SK = C?.sick;
   const kpi = (label, v, hint = "", cls = "") => `<div class="card kpi ${cls}"><div class="label">${label}</div><div class="value num">${v}</div>${hint ? `<div class="hint">${hint}</div>` : ""}</div>`;
   body.innerHTML = `${C && !C.error ? `
@@ -139,7 +141,7 @@ async function leave(e, body, params) {
       ${SK.message ? `<div class="note warn" style="margin-top:8px">${h(SK.message)}</div>` : ""}
       <p class="muted small" style="margin-top:6px">Η κάλυψη αποδοχών δεν είναι όριο απουσίας· η καταχώριση αναρρωτικής δεν μπλοκάρεται και δεν αφαιρείται από την κανονική άδεια.</p></div>` : ""}
     <div class="grid g2" style="margin-top:16px">
-      <div class="card"><h3>Ετήσιες βάσεις</h3>${C.entitlements.length ? C.entitlements.map((x) => `<div class="list-item small ${x.superseded_at ? "muted" : ""}"><div class="grow">Από ${dmy(x.valid_from)}: <strong>${num2(x.annual_days)}</strong> ημέρες${x.note ? ` — ${h(x.note)}` : ""}<div class="muted">${h(x.set_by)} · ${athens(x.set_at)}${x.superseded_at ? ` · αντικαταστάθηκε ${athens(x.superseded_at)}` : ""}</div></div></div>`).join("") : `<p class="muted small">Καμία.</p>`}</div>
+      <div class="card"><h3>Ετήσιες βάσεις</h3><div id="lv-bd" style="margin-bottom:8px"></div>${C.entitlements.length ? C.entitlements.map((x) => `<div class="list-item small ${x.superseded_at ? "muted" : ""}"><div class="grow">Από ${dmy(x.valid_from)}: <strong>${num2(x.annual_days)}</strong> ημέρες${x.note ? ` — ${h(x.note)}` : ""}<div class="muted">${h(x.set_by)} · ${athens(x.set_at)}${x.superseded_at ? ` · αντικαταστάθηκε ${athens(x.superseded_at)}` : ""}</div></div></div>`).join("") : `<p class="muted small">Καμία.</p>`}</div>
       <div class="card"><h3>Διορθώσεις & εκκαθαρίσεις</h3>
         ${C.adjustments.map((x) => `<div class="list-item small"><div class="grow">Διόρθωση ${x.leave_year}: ${num2(x.prev_value)} → <strong>${num2(x.new_value)}</strong> — ${h(x.reason)}<div class="muted">${h(x.created_by)} · ${athens(x.created_at)}</div></div></div>`).join("")}
         ${C.settlements.map((x) => `<div class="list-item small ${x.voided_at ? "muted" : ""}"><div class="grow">Εκκαθάριση ${x.leave_year}: <strong>${num2(x.days)}</strong> ημέρες · ${money(x.amount)} · πληρωμή ${dmy(x.paid_on)}${x.voided_at ? ` · ακυρώθηκε: ${h(x.void_reason)}` : ""}<div class="muted">${h(x.created_by)} · ${athens(x.created_at)}</div></div>${x.has_doc ? `<button class="btn sm" data-doc="${x.id}">Παραστατικό</button>` : ""}</div>`).join("")}
@@ -155,6 +157,12 @@ async function leave(e, body, params) {
   const re = (d) => (location.hash = `#/employee?code=${encodeURIComponent(e.code)}&tab=leave&asof=${d || asOf}`);
   $("#lv-asof") && ($("#lv-asof").onchange = (ev) => re(ev.target.value));
   $$("[data-doc]", body).forEach((b) => (b.onclick = () => downloadSettlementDoc(Number(b.dataset.doc))));
+  // Υποπερίοδοι του έτους: η βάση αλλάζει στην επέτειο πρόσληψης (όχι 1/1)· το άθροισμα = αναλογία έτους
+  if (B && $("#lv-bd")) S.api.leaveBreakdown(e.code, B.year, asOf).then((bd) => {
+    const el = $("#lv-bd"); if (!el || !bd.periods?.length) return;
+    el.innerHTML = `<div class="note small"><strong>Υποπερίοδοι ${bd.year}</strong> (έως ${dmy(bd.to)})${bd.periods.map((p) => `<br>${dmy(p.from)} – ${dmy(p.to)}: βάση ${num2(p.annual_days)}${p.work_week ? ` (${p.work_week === 6 ? "εξαήμερο" : "πενθήμερο"})` : ""} → <strong>${num2(p.accrued)}</strong>`).join("")}
+      <br>Σύνολο αναλογίας: <strong>${num2(bd.accrued)}</strong><br><span class="muted">${h(bd.rule)}</span></div>`;
+  }).catch(() => {});
   const reload = () => window.dispatchEvent(new Event("mg:rerender"));
   $("#lv-pay") && ($("#lv-pay").onclick = () => settleDialog({ employee_code: e.code, employee_name: `${e.first} ${e.last}`, leave_year: B.prev_year, outstanding: B.prev_balance }, reload));
   $("#lv-adj") && ($("#lv-adj").onclick = () => openDialog(`<div class="dlg-head"><div><div class="eyebrow">${h(e.first)} ${h(e.last)}</div><h2>Διόρθωση υπολοίπου</h2></div><button class="icon-btn" data-close>✕</button></div>
@@ -169,12 +177,15 @@ async function leave(e, body, params) {
     const sug = await S.api.leaveSuggest(e.code).catch(() => ({ rows: [] }));
     openDialog(`<div class="dlg-head"><div><div class="eyebrow">${h(e.first)} ${h(e.last)}</div><h2>Ετήσια βάση κανονικής άδειας</h2></div><button class="icon-btn" data-close>✕</button></div>
       ${sug.rows?.length ? `<p class="muted small">Πρόταση από πρόσληψη & σύστημα εργασίας — ${h(sug.rule || "")}:</p>${sug.rows.map((x) => `<div class="list-item small"><div class="grow">Από ${dmy(x.valid_from)}: <strong>${x.annual_days}</strong> ημέρες (${x.work_week === 6 ? "εξαήμερο" : "πενθήμερο"}, ${x.service_years} έτη)</div>${x.exists ? `<span class="badge b-signed">Υπάρχει</span>` : `<button class="btn sm" data-sug="${x.valid_from}|${x.annual_days}">Αποθήκευση</button>`}</div>`).join("")}` : `<p class="muted small">${h(sug.note || "Δεν υπάρχει πρόταση.")}</p>`}
+      ${sug.rows?.some((x) => !x.exists) ? `<div class="row-actions" style="margin-top:8px"><button class="btn primary sm" id="eb-all">Εφαρμογή όλων των προτεινόμενων (επέτειοι)</button></div>
+        <p class="muted small">Κάθε νέα βάση ισχύει από την ημερομηνία της (π.χ. από την επέτειο πρόσληψης)· καμία αναδρομική αλλαγή στις υπάρχουσες.</p>` : ""}
       <h4 style="margin-top:12px">Χειροκίνητη καταχώριση</h4>
       <div class="grid g3"><div><label>Ετήσιες ημέρες</label><input id="eb-d" inputmode="decimal"></div><div><label>Ισχύει από</label><input type="date" id="eb-f"></div><div><label class="check" style="margin-top:28px"><input type="checkbox" id="eb-r"> Διόρθωση υπάρχουσας</label></div></div>
       <label>Σημείωση / αιτιολογία</label><input id="eb-n" maxlength="300"><p id="eb-m" class="form-msg"></p>
       <div class="dlg-foot"><button class="btn" data-close>Κλείσιμο</button><button class="btn primary" id="eb-ok">Αποθήκευση</button></div>`, {
       onOpen() {
         $$("[data-sug]").forEach((b) => (b.onclick = async () => { const [f, d] = b.dataset.sug.split("|"); try { await S.api.leaveSetBase(e.code, Number(d), f, "Από πρόταση εφαρμογής"); closeDialog(); toast("Αποθηκεύτηκε."); reload(); } catch (err) { $("#eb-m").textContent = err.message; } }));
+        $("#eb-all") && ($("#eb-all").onclick = async () => { try { const r = await S.api.leaveApplyBases(e.code); closeDialog(); toast(`Καταχωρίστηκαν ${r.added} βάσεις.`); reload(); } catch (err) { $("#eb-m").textContent = err.message; } });
         $("#eb-ok").onclick = async () => { try { await S.api.leaveSetBase(e.code, Number($("#eb-d").value.replace(",", ".")), $("#eb-f").value, $("#eb-n").value, $("#eb-r").checked); closeDialog(); toast("Αποθηκεύτηκε."); reload(); } catch (err) { $("#eb-m").textContent = err.message; } };
       },
     });

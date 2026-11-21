@@ -82,11 +82,14 @@ export async function createSupabaseApi(cfg) {
 
     employees: () => all(() => sb.from("employees").select("*").order("last").order("first")),
     async saveEmployee(e, isNew) {
-      if (isNew) check(await sb.from("employees").insert(e));
+      // Κενός κωδικός → ο server δίνει τον επόμενο ελεύθερο αριθμό (ενιαία αρίθμηση για όλα τα καταστήματα)
+      if (isNew) return check(await sb.from("employees").insert({ ...e, code: e.code || "AUTO" }).select("code").single());
       else { const { code, ...rest } = e; check(await sb.from("employees").update(rest).eq("code", code)); }
     },
     async importEmployees(rows) {
-      for (let i = 0; i < rows.length; i += 400) check(await sb.from("employees").upsert(rows.slice(i, i + 400), { onConflict: "code" }));
+      const auto = rows.filter((r) => r.code === "AUTO"), rest = rows.filter((r) => r.code !== "AUTO");
+      for (let i = 0; i < rest.length; i += 400) check(await sb.from("employees").upsert(rest.slice(i, i + 400), { onConflict: "code" }));
+      for (let i = 0; i < auto.length; i += 400) check(await sb.from("employees").insert(auto.slice(i, i + 400)));   // κωδικός από τον server
       return rows.length;
     },
 
@@ -181,15 +184,16 @@ function hrApi(sb, all, rpc, fn) {
       return all(() => { let q = sb.from("hr_requests").select(REQ_COLS).order("created_at", { ascending: false }); if (employee) q = q.eq("employee_code", employee); return q; });
     },
     async request(id) {
-      const [r, decisions, events, attachments, internal] = await Promise.all([
+      const [r, decisions, events, attachments, internal, revisions] = await Promise.all([
         sb.from("hr_requests").select("*").eq("id", id).maybeSingle().then(check),
         sb.from("hr_decisions").select("*").eq("request_id", id).order("decided_at").then(check),
         sb.from("hr_request_events").select("*").eq("request_id", id).order("at").then(check),
         sb.from("hr_attachments").select("id,filename,mime,size,uploaded_by,uploaded_at").eq("request_id", id).order("uploaded_at").then(check),
         sb.from("hr_request_internal").select("*").eq("request_id", id).maybeSingle().then(check),
+        sb.from("hr_request_revisions").select("*").eq("request_id", id).order("rev_no").then(check),
       ]);
       if (!r) throw new Error("Το αίτημα δεν βρέθηκε ή δεν έχετε πρόσβαση.");
-      return { ...r, decisions, events, attachments, internal };
+      return { ...r, decisions, events, attachments, internal, revisions };
     },
     decisionsFor: (ids) => ids.length ? all(() => sb.from("hr_decisions").select("*").in("request_id", ids).is("superseded_at", null)) : [],
     async attachment(id) { return check(await sb.from("hr_attachments").select("*").eq("id", id).single()); },
@@ -222,6 +226,10 @@ function hrApi(sb, all, rpc, fn) {
       });
     },
     statsSave: (date, rows) => rpc("stats_save", { p_date: date, p_rows: rows }),
+    statsMembers: (from, to, store) => rpc("stats_members_report", { p_from: from, p_to: to, p_store: store || null }),
+    statLinks: () => rpc("statlink_list"),
+    statLinkCreate: (store) => rpc("statlink_create", { p_store: store }),
+    statLinkRevoke: (store, reason) => rpc("statlink_revoke", { p_store: store, p_reason: reason || null }),
     statsHistory: (id) => all(() => sb.from("daily_stats_history").select("*").eq("stats_id", id).order("changed_at", { ascending: false })),
 
     // Αξιολογήσεις
@@ -286,8 +294,38 @@ function hrApi(sb, all, rpc, fn) {
     empTransfer: (code, store, eff, note) => rpc("emp_transfer", { p_code: code, p_store: store, p_effective: eff, p_note: note || null }),
     // ── Άδειες ──
     leaveCard: (code, asOf) => rpc("leave_card", { p_code: code, p_as_of: asOf || null }),
-    leavePreview: (code, s, e, type, req) => rpc("leave_preview", { p_code: code, p_start: s, p_end: e, p_leave_type: type, p_request: req || null }),
+    leavePreview: (code, s, e, type, req, include) => rpc("leave_preview", { p_code: code, p_start: s, p_end: e, p_leave_type: type, p_request: req || null, p_include: include || null }),
+    reqChangeDates: (id, s, e, days, reason, v) => rpc("req_change_dates", { p_id: id, p_start: s, p_end: e, p_days: days, p_reason: reason, p_version: v }),
     leaveCheck: (id) => rpc("leave_check", { p_request: id }),
+    leaveApplyBases: (code, note) => rpc("leave_apply_bases", { p_code: code, p_note: note || null }),
+    leaveBreakdown: (code, year, upto) => rpc("leave_breakdown", { p_code: code, p_year: year, p_upto: upto || null }),
+    tasksAll: (mine) => rpc("tasks_all", { p_mine: mine !== false }),
+    taskClaim: (id) => rpc("task_claim", { p_task: Number(id) }),
+    taskNote: (kind, ref, note, file) => rpc("task_note", { p_kind: kind, p_ref: String(ref), p_note: note || "", p_file: file || null }),
+    taskHistory: (kind, ref) => rpc("task_history", { p_kind: kind, p_ref: String(ref) }),
+    taskFile: (id) => rpc("task_file", { p_id: id }),
+    srepCreate: (p) => rpc("srep_create", { p }),
+    srepList: (store, status) => rpc("srep_list", { p_store: store || null, p_status: status || null }),
+    srepGet: (id) => rpc("srep_get", { p_id: Number(id) }),
+    srepAct: (id, action, note, file) => rpc("srep_act", { p_id: Number(id), p_action: action, p_note: note || null, p_file: file || null }),
+    srepManagers: (store) => rpc("srep_managers", { p_store: store }),
+    noticeCount: () => rpc("notice_count"),
+    impSettings: () => rpc("imp_settings"),
+    impSetDayMode: (m) => rpc("imp_set_day_mode", { p_mode: m }),
+    impList: (emp) => rpc("imp_list", { p_employee: emp || null }),
+    impGet: (id) => rpc("imp_get", { p_id: id }),
+    impCreate: (p) => rpc("imp_create", { p }),
+    impUpdate: (id, p, v) => rpc("imp_update", { p_id: id, p, p_version: v }),
+    impReview: (id, o, r, d, due, v) => rpc("imp_review", { p_id: id, p_outcome: o, p_reason: r, p_action_date: d, p_new_due: due, p_version: v }),
+    impSetStage: (id, st, r, due, v) => rpc("imp_set_stage", { p_id: id, p_stage: st, p_reason: r, p_new_due: due, p_version: v }),
+    impLinkWarning: (id, req, v) => rpc("imp_link_warning", { p_id: id, p_request: req, p_version: v }),
+    impNote: (id, note, file, kind, form) => rpc("imp_note", { p_id: id, p_note: note || "", p_file: file || null, p_kind: kind || "note", p_form: form ?? null }),
+    impFile: (id) => rpc("imp_file", { p_event: id }),
+    impSummary: () => rpc("imp_summary"),
+    impIssueForm: (id) => rpc("imp_issue_form", { p_id: id }),
+    impFormPrint: (id) => rpc("imp_form_print", { p_form: id }),
+    formTemplateInfo: (key) => rpc("form_template_info", { p_key: key }),
+    formTemplateUpload: (key, file, body, fields) => rpc("form_template_upload", { p_key: key, p_file: file || null, p_body: body || null, p_fields: fields || [] }),
     leaveCalendar: (from, to, store, spec, closed) => rpc("leave_calendar", { p_from: from, p_to: to, p_store: store || null, p_specialty: spec || null, p_include_closed: !!closed }),
     leaveCancel: (id, days, reason) => rpc("leave_cancel", { p_request: id, p_days: days?.length ? days : null, p_reason: reason }),
     leaveAdjust: (code, year, value, asOf, reason) => rpc("leave_adjust", { p_code: code, p_year: year, p_new_value: value, p_as_of: asOf, p_reason: reason }),
@@ -303,7 +341,13 @@ function hrApi(sb, all, rpc, fn) {
     // ── Πρόγραμμα ──
     schedWeek: (store, week, spec) => rpc("sched_week", { p_store: store, p_week_start: week, p_specialty: spec || null }),
     schedSetPattern: (code, from, days, reason) => rpc("sched_set_pattern", { p_code: code, p_valid_from: from, p_days: days, p_reason: reason || null }),
-    schedSetTemp: (code, days, segs, reason) => rpc("sched_set_temp", { p_code: code, p_days: days, p_segments: segs, p_reason: reason || null }),
+    schedSetTemp: (code, days, segs, reason, kind) => rpc("sched_set_temp", { p_code: code, p_days: days, p_segments: segs, p_reason: reason || null, p_kind: kind || null }),
+    schedDelete: (code, days, reason) => rpc("sched_delete", { p_code: code, p_days: days, p_reason: reason || null }),
+    shiftTemplateDelete: (id) => rpc("shift_template_delete", { p_id: id }),
+    schedNight: (store, from, to, spec) => rpc("sched_night", { p_store: store, p_from: from, p_to: to, p_specialty: spec || null }),
+    schedAlerts: (all) => rpc("sched_alerts", { p_all: !!all }),
+    schedAlertCount: () => rpc("sched_alert_count"),
+    schedAlertRead: (id) => rpc("sched_alert_read", { p_id: id ?? null }),
     schedClearTemp: (code, days, reason) => rpc("sched_clear_temp", { p_code: code, p_days: days, p_reason: reason || null }),
     schedFinalize: (store, week) => rpc("sched_finalize", { p_store: store, p_week_start: week }),
     schedHistory: (store, from, to, code) => rpc("sched_history", { p_store: store, p_from: from || null, p_to: to || null, p_employee: code || null }),
@@ -319,7 +363,7 @@ function hrApi(sb, all, rpc, fn) {
     // ── Υλοποίηση, ειδοποιήσεις, εργασίες ──
     reqImplClaim: (id, v) => rpc("req_impl_claim", { p_id: id, p_version: v }),
     reqImplComplete: (id, note, file, v) => rpc("req_impl_complete", { p_id: id, p_note: note, p_file: file || null, p_version: v }),
-    reqTaskAdd: (id, roleName, text) => rpc("req_task_add", { p_id: id, p_role: roleName, p_text: text }),
+    reqTaskAdd: (id, roleName, text, due) => rpc("req_task_add", { p_id: id, p_role: roleName, p_text: text, p_due: due || null }),
     reqTaskDone: (task, note) => rpc("req_task_done", { p_task: task, p_note: note || null }),
     requestTasks: (id) => all(() => sb.from("request_tasks").select("*").eq("request_id", id).order("created_at")),
     myTasks: () => rpc("my_tasks"),

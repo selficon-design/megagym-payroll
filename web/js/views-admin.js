@@ -1,7 +1,7 @@
 // Ρυθμίσεις επέκτασης: Πρότυπα κειμένων (με εκδόσεις), είδη άδειας, λόγοι απόρριψης, ειδικότητες, πεδίο εκπαιδευτών
 import { S, can, invalidate, activeStores, activeSpecialties } from "./core.js";
-import { $, $$, h, toast, openDialog, closeDialog, confirmBox } from "./util.js";
-import { athens, renderTemplate, demoNotice } from "./hr-common.js";
+import { $, $$, h, toast, openDialog, closeDialog, confirmBox, dmy } from "./util.js";
+import { athens, renderTemplate, demoNotice, fileToPayload } from "./hr-common.js";
 import { KINDS } from "./stats-calc.js";
 
 const view = () => $("#view");
@@ -12,7 +12,8 @@ const SAMPLE = { ονοματεπώνυμο: "Μαρία Παπαδοπούλο�
 export async function templates() {
   if (S.api.mode === "demo") return (view().innerHTML = demoNotice("Πρότυπα κειμένων"));
   if (!can.templates()) return (view().innerHTML = `<div class="card empty">Τα πρότυπα τα επεξεργάζεται η Γενική Διευθύντρια.</div>`);
-  const [tpls, lts, rrs] = await Promise.all([S.api.templates(), S.api.leaveTypes(), S.api.rejectReasons()]);
+  const [tpls, lts, rrs, ft] = await Promise.all([S.api.templates(), S.api.leaveTypes(), S.api.rejectReasons(), S.api.formTemplateInfo("improvement_stage2").catch(() => null)]);
+  const fcur = ft?.versions?.[0];
   view().innerHTML = `
   <div class="page-head"><div><div class="eyebrow">Ρυθμίσεις</div><h1>Πρότυπα κειμένων</h1>
     <p class="muted">Κάθε αλλαγή αποθηκεύεται ως νέα έκδοση και ισχύει για τις νέες καταχωρίσεις. Τα κείμενα αιτημάτων και αποφάσεων που έχουν ήδη αποθηκευτεί δεν αλλάζουν.</p></div></div>
@@ -21,6 +22,13 @@ export async function templates() {
       ${t.variables.length ? `<div class="chips" style="margin:8px 0">${t.variables.map((v) => `<span class="chip">{${h(v)}}</span>`).join("")}</div>` : ""}
       <div class="statement small">${h(t.current?.body || "")}</div>
       <div class="row-actions" style="margin-top:10px"><button class="btn sm primary" data-edit="${t.key}">Επεξεργασία</button>${t.history.length > 1 ? `<button class="btn sm" data-hist="${t.key}">Εκδόσεις (${t.history.length})</button>` : ""}</div></div>`).join("")}</div>
+
+  ${ft ? `<div class="card" style="margin-top:16px"><div class="card-head"><h3>${h(ft.label)}</h3><span class="muted small">${fcur ? `έκδοση ${fcur.version}` : ""}</span></div>
+    ${fcur ? `<p class="small">PDF: <strong>${h(fcur.pdf_name)}</strong> (${Math.ceil(fcur.pdf_size / 1024)} KB) · ${h(fcur.created_by)} · ${dmy(fcur.created_at.slice(0, 10))}</p>
+      ${fcur.body ? `<div class="statement small">${h(fcur.body)}</div>` : ""}${fcur.fields?.length ? `<div class="chips" style="margin-top:8px">${fcur.fields.map((f) => `<span class="chip">{${h(f)}}</span>`).join("")}</div>` : ""}`
+      : `<div class="note warn">Δεν έχει προστεθεί πρότυπο. Η έκδοση του εντύπου σταδίου 2 μένει ανενεργή μέχρι να ανεβεί το PDF.</div>`}
+    <p class="muted small" style="margin-top:8px">Κάθε αλλαγή δημιουργεί νέα έκδοση. Τα έντυπα που έχουν ήδη εκδοθεί κρατούν αντίγραφο της έκδοσης με την οποία εκδόθηκαν.</p>
+    <button class="btn sm primary" id="ft-up" style="margin-top:6px">${fcur ? "Νέα έκδοση" : "Ανέβασμα PDF"}</button></div>` : ""}
 
   <div class="card" style="margin-top:16px"><div class="card-head"><h3>Είδη άδειας</h3><button class="btn sm" id="lt-new">+ Νέο είδος</button></div>
     <div class="table-wrap"><table><thead><tr><th>Κωδικός</th><th>Περιγραφή (όπως μπαίνει στο κείμενο)</th><th>Κατάσταση</th><th></th></tr></thead><tbody>
@@ -34,6 +42,22 @@ export async function templates() {
       <td>${x.for_other ? "Ναι" : "Όχι"}</td><td><span class="badge ${x.active ? "b-signed" : "b-missing"}">${x.active ? "Ενεργός" : "Ανενεργός"}</span></td><td style="text-align:right"><button class="btn sm" data-rr="${x.code}">Επεξεργασία</button></td></tr>`).join("")}
     </tbody></table></div></div>`;
   const reload = () => { invalidate(); templates(); };
+  $("#ft-up") && ($("#ft-up").onclick = () => openDialog(`<div class="dlg-head"><div><div class="eyebrow">Πρότυπο εντύπου</div><h2>${h(ft.label)}</h2></div><button class="icon-btn" data-close>✕</button></div>
+    <label>PDF εντύπου ${fcur ? "(κενό = ίδιο PDF με την τρέχουσα έκδοση)" : ""}</label><input type="file" id="ft-f" accept="application/pdf,.pdf">
+    <label>Συνοδευτικό κείμενο</label><textarea id="ft-b" rows="4" maxlength="8000">${h(fcur?.body || "")}</textarea>
+    <label>Πεδία αυτόματης συμπλήρωσης (ένα ανά γραμμή)</label><textarea id="ft-fl" rows="3" placeholder="ονοματεπώνυμο&#10;κατάστημα&#10;ημερομηνία">${h((fcur?.fields || []).join("\n"))}</textarea>
+    <p class="muted small">Διαθέσιμα: ονοματεπώνυμο, κωδικός, κατάστημα, ειδικότητα, αριθμός_υπόθεσης, είδος, περιγραφή, ενέργειες, προθεσμία, ημερομηνία, υπεύθυνος. Η τοποθέτησή τους πάνω στο PDF ορίζεται αφού εξεταστεί το αρχείο· μέχρι τότε αποθηκεύονται μαζί με κάθε εκδοθέν έντυπο.</p>
+    <p id="ft-m" class="form-msg"></p><div class="dlg-foot"><button class="btn" data-close>Άκυρο</button><button class="btn primary" id="ft-ok">Αποθήκευση νέας έκδοσης</button></div>`, {
+    onOpen() {
+      $("#ft-ok").onclick = async () => {
+        try {
+          const f = $("#ft-f").files[0] ? await fileToPayload($("#ft-f").files[0]) : null;
+          await S.api.formTemplateUpload("improvement_stage2", f, $("#ft-b").value, $("#ft-fl").value.split("\n").map((x) => x.trim()).filter(Boolean));
+          closeDialog(); toast("Αποθηκεύτηκε νέα έκδοση."); reload();
+        } catch (e) { $("#ft-m").textContent = e.message; }
+      };
+    },
+  }));
   $$("[data-edit]").forEach((b) => (b.onclick = () => {
     const t = tpls.find((x) => x.key === b.dataset.edit);
     openDialog(`<div class="dlg-head"><div><div class="eyebrow">Νέα έκδοση ${t.current.version + 1}</div><h2>${h(t.label)}</h2></div><button class="icon-btn" data-close>✕</button></div>

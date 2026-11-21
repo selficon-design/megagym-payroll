@@ -1,8 +1,8 @@
 // Ημερήσια στατιστικά: καταχώριση ανά ημέρα/εργαζόμενο (manager) και αναφορές διαστήματος (ΓΔ, HR)
-import { S, can, role, getEmployees, visibleStores, activeStores, specialtyKind, invalidate } from "./core.js";
+import { S, can, role, getEmployees, visibleStores, activeStores, specialtyKind, invalidate, P } from "./core.js";
 import { $, $$, h, dmy, toast, openDialog, downloadXlsx } from "./util.js";
 import { athens, athensToday, demoNotice } from "./hr-common.js";
-import { KINDS, FIELD_LABEL, FIELD_SHORT, parseCount, totals, metrics, fmtPct, warnings, groupBy, daysBetween, bucketOf } from "./stats-calc.js";
+import { KINDS, FIELD_LABEL, FIELD_SHORT, OLD_FIELDS, oldMemberRows, parseCount, totals, metrics, fmtPct, warnings, groupBy, daysBetween, bucketOf } from "./stats-calc.js";
 
 const view = () => $("#view");
 
@@ -23,13 +23,17 @@ export async function statsEntry(params) {
     const list = keyed.filter((k) => k.kind === kind);
     if (!list.length) return "";
     const K = KINDS[kind];
+    const old = kind === "reception";   // «Παλιά μέλη» μόνο στη Ρεσεψιόν
     return `<div class="card" style="margin-top:16px"><div class="card-head"><h3>${K.label}</h3><span class="muted small">${K.metrics.map((m) => `${m.label} = ${m.formula}`).join(" · ")}</span></div>
-      <div class="table-wrap"><table class="entry"><thead><tr><th>Εργαζόμενος</th>${kind !== "exclusive" ? `<th class="r calc">Ενημερ.</th>` : ""}${K.fields.map((f) => `<th class="r" title="${h(FIELD_LABEL[f])}">${h(FIELD_SHORT[f])}</th>`).join("")}${K.metrics.map((m) => `<th class="r calc" title="${h(m.formula)}">${h(m.label)}</th>`).join("")}<th></th></tr></thead><tbody>
+      ${old ? `<p class="muted small">Δύο χωριστές ομάδες: <strong>Νέα μέλη</strong> (εγγραφές) και <strong>Παλιά μέλη</strong> (ανανεώσεις), με τα ίδια πεδία. «Άμεσο» = «Παλιά μέλη — Άμεσο»· εμφανίζεται χωριστά και δεν προστίθεται στα σύνολα μέχρι να διευκρινιστεί αν περιέχεται ήδη στο DR των παλιών μελών. Παλιές καταχωρίσεις χωρίς διάκριση μένουν ως έχουν.</p>` : ""}
+      <div class="table-wrap"><table class="entry"><thead>${old ? `<tr><th></th><th class="grp" colspan="${K.fields.length + 1}">Νέα μέλη</th><th class="grp" colspan="${K.metrics.length}"></th><th class="grp old" colspan="${OLD_FIELDS.length}">Παλιά μέλη</th><th></th></tr>` : ""}
+      <tr><th>Εργαζόμενος</th>${kind !== "exclusive" ? `<th class="r calc">Ενημερ.</th>` : ""}${K.fields.map((f) => `<th class="r" title="${h(FIELD_LABEL[f])}">${h(FIELD_SHORT[f])}</th>`).join("")}${K.metrics.map((m) => `<th class="r calc" title="${h(m.formula)}">${h(m.label)}</th>`).join("")}${old ? OLD_FIELDS.map((f) => `<th class="r old" title="${h(FIELD_LABEL[f])}">${h(FIELD_SHORT[f])}</th>`).join("") : ""}<th></th></tr></thead><tbody>
       ${list.map((k) => `<tr data-key="${h(k.e.code)}|${h(k.spec)}" data-kind="${kind}">
         <td><strong>${h(k.e.last)} ${h(k.e.first)}</strong><span class="sub">${h(k.e.code)}${k.row ? ` · ${k.row.updated_at ? "διορθώθηκε " + athens(k.row.updated_at) : "καταχωρίστηκε " + athens(k.row.created_at)}` : " · χωρίς καταχώριση"}</span></td>
         ${kind !== "exclusive" ? `<td class="r num calc" data-out="informed">—</td>` : ""}
         ${K.fields.map((f) => `<td><input class="cnt" inputmode="numeric" data-f="${f}" value="${k.row ? k.row[f] : ""}" aria-label="${h(FIELD_LABEL[f])}"></td>`).join("")}
         ${K.metrics.map((m) => `<td class="r num calc" data-out="${m.key}">—</td>`).join("")}
+        ${old ? OLD_FIELDS.map((f) => `<td class="old"><input class="cnt" inputmode="numeric" data-f="${f}" data-old="1" value="${k.row && k.row[f] !== null && k.row[f] !== undefined ? k.row[f] : ""}" aria-label="${h(FIELD_LABEL[f])}"></td>`).join("") : ""}
         <td>${k.row ? `<button class="btn sm ghost" data-hist="${k.row.id}" title="Ιστορικό διορθώσεων">↺</button>` : ""}</td></tr>`).join("")}
       </tbody></table></div></div>`;
   };
@@ -37,7 +41,7 @@ export async function statsEntry(params) {
   view().innerHTML = `
   <div class="page-head"><div><div class="eyebrow">Στατιστικά</div><h1>Καθημερινή καταχώριση</h1>
     <p class="muted">Συμπληρώστε τα αρχικά μεγέθη· οι ενημερώσεις (DR + LOST) και τα ποσοστά υπολογίζονται αυτόματα. Κενή γραμμή = χωρίς καταχώριση· για ημέρα χωρίς αποτελέσματα γράψτε 0.</p></div>
-    ${can.statsReports() ? `<a class="btn" href="#/stats-report">Αναφορές</a>` : ""}</div>
+    <div class="row-actions">${P("stats.links") ? `<button class="btn" id="se-links">Σύνδεσμοι Ρεσεψιόν</button>` : ""}${can.statsReports() ? `<a class="btn" href="#/stats-report">Αναφορές</a>` : ""}</div></div>
   <div class="card"><div class="toolbar">
     <label class="small muted" style="margin:0;display:flex;gap:6px;align-items:center">Ημερομηνία <input type="date" id="se-date" max="${athensToday()}" value="${F.date}" style="width:auto"></label>
     ${role() === "manager" ? `<strong>${h(F.store)}</strong>` : `<select id="se-store">${activeStores().map((s) => `<option ${s === F.store ? "selected" : ""}>${h(s)}</option>`).join("")}</select>`}
@@ -49,14 +53,15 @@ export async function statsEntry(params) {
   <p id="se-msg" class="form-msg"></p>`;
 
   const rowState = (tr) => {
-    const kind = tr.dataset.kind, vals = {}; let empty = 0, err = null;
+    const kind = tr.dataset.kind, vals = {}; let empty = 0, oldEmpty = 0, err = null;
     for (const inp of $$(".cnt", tr)) {
       const p = parseCount(inp.value);
       inp.classList.toggle("bad", !!p.error);
-      if (p.error) err = p.error; else if (p.empty) empty++; else vals[inp.dataset.f] = p.value;
+      if (p.error) err = p.error; else if (p.empty) { if (inp.dataset.old) oldEmpty++; else empty++; } else vals[inp.dataset.f] = p.value;
     }
-    const n = KINDS[kind].fields.length;
-    return { kind, vals, err, empty: empty === n, partial: empty > 0 && empty < n };
+    const n = KINDS[kind].fields.length, no = kind === "reception" ? OLD_FIELDS.length : 0;
+    return { kind, vals, err, empty: empty === n && oldEmpty === no, partial: (empty > 0 && empty < n) || (oldEmpty > 0 && oldEmpty < no) || (empty === n && oldEmpty < no),
+             oldEmpty: no > 0 && oldEmpty === no };
   };
   const recalc = (tr) => {
     const st = rowState(tr);
@@ -69,6 +74,7 @@ export async function statsEntry(params) {
   $("#se-date").onchange = (e) => { F.date = e.target.value; statsEntry(params); };
   $("#se-store") && ($("#se-store").onchange = (e) => { F.store = e.target.value; statsEntry(params); });
   $$("[data-hist]").forEach((b) => (b.onclick = () => historyDialog(Number(b.dataset.hist))));
+  $("#se-links") && ($("#se-links").onclick = () => linksDialog());
   $("#se-save").onclick = async () => {
     const payload = []; const problems = [];
     for (const tr of $$("tr[data-key]")) {
@@ -77,8 +83,10 @@ export async function statsEntry(params) {
       if (st.err) { problems.push(`${code}: ${st.err}`); continue; }
       if (st.partial) { problems.push(`${code}: συμπληρώστε όλα τα πεδία ή κανένα`); continue; }
       if (st.empty) { if (k.row) problems.push(`${code}: η υπάρχουσα καταχώριση δεν διαγράφεται· διορθώστε τις τιμές`); continue; }
+      const legacy = k.row && st.kind === "reception" && (k.row.old_dr === null || k.row.old_dr === undefined);
+      if (st.oldEmpty && !legacy) { problems.push(`${code}: συμπληρώστε και τα «Παλιά μέλη» (0 όπου δεν υπάρχουν)`); continue; }
       if (k.row) {
-        if (KINDS[st.kind].fields.every((f) => Number(k.row[f]) === st.vals[f])) continue;
+        if (KINDS[st.kind].fields.every((f) => Number(k.row[f]) === st.vals[f]) && (st.kind !== "reception" || OLD_FIELDS.every((f) => (k.row[f] ?? null) === (st.vals[f] ?? null)))) continue;
         payload.push({ id: k.row.id, version: k.row.version, employee_code: code, ...st.vals });
       } else if (!k.readonlyNew) payload.push({ employee_code: code, ...st.vals });
     }
@@ -111,7 +119,7 @@ export async function statsReport(params) {
   const F = (S.filters.statsRep ??= { from: today.slice(0, 8) + "01", to: today, store: "", kind: "reception", tab: "emp", metric: "conv" });
   if (F.to < F.from) F.to = F.from;
   const [rows0, emps] = await Promise.all([S.api.stats({ from: F.from, to: F.to, store: F.store || undefined }), getEmployees()]);
-  const rows = rows0.filter((r) => r.kind === F.kind);
+  const rows = F.kind === "reception_old" ? oldMemberRows(rows0) : rows0.filter((r) => r.kind === F.kind);
   const K = KINDS[F.kind];
   if (!K.metrics.some((m) => m.key === F.metric)) F.metric = K.metrics[0].key;
   const name = (code) => { const e = emps.find((x) => x.code === code); return e ? `${e.last} ${e.first}` : code; };
@@ -163,10 +171,11 @@ export async function statsReport(params) {
       ${role() === "manager" ? `<strong>${h(S.me.store)}</strong>` : `<select id="sr-store"><option value="">Όλα τα καταστήματα</option>${visibleStores().map((s) => `<option ${s === F.store ? "selected" : ""}>${h(s)}</option>`).join("")}</select>`}
       <div class="chips">${Object.entries(KINDS).map(([k, v]) => `<button class="chip ${k === F.kind ? "on" : ""}" data-kind="${k}">${v.label}</button>`).join("")}</div>
     </div>
-    <div class="tabs">${[["emp", "Ανά εργαζόμενο"], ["store", "Ανά κατάστημα"], ["daily", "Ημερήσιες καταχωρίσεις"], ["trend", "Εξέλιξη"]].map(([k, l]) => `<a href="javascript:void 0" data-tab="${k}" class="${k === F.tab ? "on" : ""}">${l}</a>`).join("")}</div>
-    ${rows.length ? content : `<div class="empty">Δεν υπάρχουν καταχωρίσεις ${K.label} στο διάστημα.</div>`}
+    <div class="tabs">${[["emp", "Ανά εργαζόμενο"], ["store", "Ανά κατάστημα"], ["daily", "Ημερήσιες καταχωρίσεις"], ["trend", "Εξέλιξη"], ["members", "Νέες εγγραφές & ανανεώσεις"]].map(([k, l]) => `<a href="javascript:void 0" data-tab="${k}" class="${k === F.tab ? "on" : ""}">${l}</a>`).join("")}</div>
+    ${F.tab === "members" ? `<div id="sr-members"><div class="spinner"></div></div>` : rows.length ? content : `<div class="empty">Δεν υπάρχουν καταχωρίσεις ${K.label} στο διάστημα.</div>`}
   </div>`;
   const re = () => statsReport(params);
+  if (F.tab === "members") membersReport(F);
   $("#sr-from").onchange = (e) => { F.from = e.target.value; re(); };
   $("#sr-to").onchange = (e) => { F.to = e.target.value; re(); };
   $("#sr-store") && ($("#sr-store").onchange = (e) => { F.store = e.target.value; re(); });
@@ -203,4 +212,43 @@ function lineChart(series, n) {
     ${series.map((s, i) => (s.v === null ? "" : `<circle cx="${x(i)}" cy="${y(s.v)}" r="3.5" class="pt"><title>${lab(s.k)}: ${fmtPct(s.v)} (${s.n} καταχωρίσεις)</title></circle>`)).join("")}
     ${series.map((s, i) => (i % step === 0 ? `<text x="${x(i)}" y="${H - 12}" text-anchor="middle" class="ax">${lab(s.k)}</text>` : "")).join("")}
   </svg>`;
+}
+
+
+// Νέες εγγραφές (νέα μέλη, DR + CB) και ανανεώσεις (παλιά μέλη, DR + CB) ανά κατάστημα και συνολικά, για οποιοδήποτε διάστημα.
+// Οι ενημερώσεις δεν είναι εγγραφές· το «Άμεσο» και οι παλιές καταχωρίσεις χωρίς διάκριση εμφανίζονται χωριστά.
+async function membersReport(F) {
+  const el = $("#sr-members"); if (!el) return;
+  try {
+    const R = await S.api.statsMembers(F.from, F.to, F.store);
+    const sum = (k) => R.reduce((a, r) => a + Number(r[k] || 0), 0);
+    const row = (label, g, strong) => `<tr class="${strong ? "total" : ""}"><td>${strong ? `<strong>${h(label)}</strong>` : h(label)}</td><td class="r num">${g("new_enrolled")}</td><td class="r num">${g("renewals")}</td><td class="r num"><strong>${g("grand_total")}</strong></td>
+      <td class="r num muted">${g("new_informed")} / ${g("old_informed")}</td><td class="r num">${g("old_direct")}</td><td class="r num">${g("rows_unsplit") ? `${g("rows_unsplit")} ημ. · ${g("unsplit_enrolled")} εγγρ.` : "—"}</td></tr>`;
+    el.innerHTML = R.length ? `<div class="table-wrap"><table><thead><tr><th>Κατάστημα</th><th class="r">Νέες εγγραφές<br><span class="muted small">νέα μέλη · DR + CB</span></th><th class="r">Ανανεώσεις<br><span class="muted small">παλιά μέλη · DR + CB</span></th><th class="r">Γενικό σύνολο</th>
+      <th class="r">Ενημερώσεις νέων / παλιών<br><span class="muted small">DR + LOST · όχι εγγραφές</span></th><th class="r">Παλιά μέλη — Άμεσο<br><span class="muted small">χωριστά, εκτός συνόλων</span></th><th class="r">Χωρίς διάκριση<br><span class="muted small">παλιές καταχωρίσεις</span></th></tr></thead><tbody>
+      ${R.map((r) => row(r.store, (k) => r[k] ?? 0)).join("")}${R.length > 1 ? row("Όλα τα καταστήματα", sum, true) : ""}</tbody></table></div>
+      <p class="muted small" style="margin-top:8px">Το «Παλιά μέλη — Άμεσο» δεν προστίθεται στα σύνολα μέχρι να διευκρινιστεί αν αποτελεί ήδη μέρος του DR των παλιών μελών. Οι παλιές καταχωρίσεις (πριν από τη διάκριση νέων/παλιών) δεν κατατάσσονται σε καμία ομάδα.</p>`
+      : `<div class="empty">Δεν υπάρχουν καταχωρίσεις Ρεσεψιόν στο διάστημα.</div>`;
+  } catch (e) { el.innerHTML = `<div class="note bad">${h(e.message)}</div>`; }
+}
+
+
+// Σύνδεσμοι στατιστικών Ρεσεψιόν ανά κατάστημα: δημιουργία / αντικατάσταση / ανάκληση. Το κλειδί εμφανίζεται ΜΟΝΟ μία φορά.
+async function linksDialog(fresh) {
+  let list;
+  try { list = await S.api.statLinks(); } catch (e) { return toast(e.message, true); }
+  const active = Object.fromEntries(list.filter((x) => x.status === "active").map((x) => [x.store, x]));
+  const base = location.href.split("#")[0].replace(/index\.html$/, "");
+  openDialog(`<div class="dlg-head"><h2>Σύνδεσμοι στατιστικών Ρεσεψιόν</h2><button class="icon-btn" data-close>✕</button></div>
+    <p class="muted small">Ένας σύνδεσμος ανά κατάστημα, μόνο για υποβολή ημερήσιων στατιστικών Ρεσεψιόν. Δεν δείχνει προηγούμενες εγγραφές ή άλλες ενότητες. Η «Αντικατάσταση» ακυρώνει αμέσως τον προηγούμενο σύνδεσμο.</p>
+    ${fresh ? `<div class="note"><strong>Νέος σύνδεσμος ${h(fresh.store)}</strong> (εμφανίζεται μόνο τώρα — αντιγράψτε τον):<br><input id="lk-url" readonly value="${h(base + "s.html#" + fresh.token)}" style="margin-top:6px"><button class="btn sm" id="lk-copy" style="margin-top:6px">Αντιγραφή</button></div>` : ""}
+    ${visibleStores().map((st) => { const a = active[st]; return `<div class="list-item"><div class="grow"><strong>${h(st)}</strong><div class="muted small">${a ? `Ενεργός από ${athens(a.created_at)} · ${a.submissions} υποβολές${a.last_used_at ? ` · τελευταία ${athens(a.last_used_at)}` : ""}` : "Χωρίς ενεργό σύνδεσμο"}</div></div>
+      <button class="btn sm" data-new="${h(st)}">${a ? "Αντικατάσταση" : "Δημιουργία"}</button>${a ? `<button class="btn sm danger" data-rev="${h(st)}">Ανάκληση</button>` : ""}</div>`; }).join("")}
+    <div class="dlg-foot"><button class="btn primary" data-close>Κλείσιμο</button></div>`, {
+    onOpen() {
+      $("#lk-copy") && ($("#lk-copy").onclick = async () => { try { await navigator.clipboard.writeText($("#lk-url").value); toast("Αντιγράφηκε."); } catch { $("#lk-url").select(); } });
+      $$("[data-new]").forEach((b) => (b.onclick = async () => { try { const r = await S.api.statLinkCreate(b.dataset.new); linksDialog({ store: b.dataset.new, token: r.token }); } catch (e) { toast(e.message, true); } }));
+      $$("[data-rev]").forEach((b) => (b.onclick = async () => { try { await S.api.statLinkRevoke(b.dataset.rev); toast("Ο σύνδεσμος ανακλήθηκε."); linksDialog(); } catch (e) { toast(e.message, true); } }));
+    },
+  });
 }

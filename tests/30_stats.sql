@@ -26,7 +26,7 @@ exception when others then if sqlerrm like 'ΑΠΟΤΥΧΙΑ%' then raise; end i
 select pg_temp.as_user('glyfada@x.gr');
 -- Ρεσεψιόν: 10 ενημερώσεις = DR 4 + LOST 6, CB 2 → μετατροπή (4+2)/10 = 60%
 select stats_save('2026-10-20', '[
-  {"employee_code":"R1","dr":4,"lost":6,"cb":2,"trials_sent":3,"enr_fitness":3,"enr_body":2,"enr_muscle":1,"enr_from_trials":1},
+  {"employee_code":"R1","dr":4,"lost":6,"cb":2,"trials_sent":3,"enr_fitness":3,"enr_body":2,"enr_muscle":1,"enr_from_trials":1,"old_dr":1,"old_lost":2,"old_cb":0,"old_trials_sent":0,"old_enr_fitness":1,"old_enr_body":0,"old_enr_muscle":0,"old_enr_from_trials":0,"old_direct":0},
   {"employee_code":"S1","dr":2,"lost":3,"cb":1,"trials_sent":4,"trials_attended":2,"trials_enrolled":1,"enr_body":1,"enr_muscle":1,"enr_pilates":1},
   {"employee_code":"X1","trials_done":5,"enr_from_trials":2}]') as res \gset
 select pg_temp.eq((select count(*) from jsonb_array_elements((:'res'::jsonb)->'rows') r where (r->>'ok')::boolean), 3::bigint, 'καταχώριση ημέρας για 3 εργαζόμενους/ειδικότητες');
@@ -76,7 +76,7 @@ reset role; update role_permissions set allowed = true where role = 'trainer' an
 
 -- Τύποι διαστήματος από ΑΘΡΟΙΣΜΑΤΑ (όχι μέσος όρος ποσοστών)
 select pg_temp.as_user('owner@x.gr');
-select stats_save('2026-10-21', '[{"employee_code":"R1","dr":1,"lost":89,"cb":0,"trials_sent":0,"enr_fitness":1,"enr_body":0,"enr_muscle":0,"enr_from_trials":0}]');
+select stats_save('2026-10-21', '[{"employee_code":"R1","dr":1,"lost":89,"cb":0,"trials_sent":0,"enr_fitness":1,"enr_body":0,"enr_muscle":0,"enr_from_trials":0,"old_dr":1,"old_lost":2,"old_cb":0,"old_trials_sent":0,"old_enr_fitness":1,"old_enr_body":0,"old_enr_muscle":0,"old_enr_from_trials":0,"old_direct":0}]');
 -- Ημέρα 1: 6/10 = 60%, ημέρα 2: 1/90 ≈ 1,1% → μέσος όρος 30,6% (ΛΑΘΟΣ) · από αθροίσματα 7/100 = 7% (ΣΩΣΤΟ)
 select pg_temp.eq((select round(100.0 * (sum(dr) + sum(cb)) / nullif(sum(informed), 0), 1) from daily_stats where employee_code = 'R1'), 7.0, 'μετατροπή διαστήματος = (ΣDR + ΣCB) / ΣΕνημερώσεις');
 select pg_temp.eq((select round(100.0 * (sum(enr_body) + sum(enr_muscle)) / nullif(sum(informed), 0), 1) from daily_stats where employee_code = 'R1'), 3.0, 'ποσοστό Exclusive = (BODY + MUSCLE) / Ενημερώσεις');

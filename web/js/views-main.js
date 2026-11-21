@@ -84,6 +84,10 @@ export async function overview() {
 }
 
 // ═══════════════════════ Εκκρεμότητες ═══════════════════════
+// Μήνας πρόσληψης / αποχώρησης· δήλωση εκτός περιόδου απασχόλησης (επισημαίνεται, δεν κρύβεται)
+const employmentNote = (r) => r.employment === "hire" ? ` · πρόσληψη ${dmy(r.hire_date)}` : r.employment === "leave" ? ` · αποχώρηση ${dmy(r.leave_date)}`
+  : r.employment === "outside" ? ` <span class="badge b-pending" title="Η δήλωση αφορά μήνα εκτός της περιόδου απασχόλησης (πρόσληψη ${r.hire_date ? dmy(r.hire_date) : "—"}, αποχώρηση ${r.leave_date ? dmy(r.leave_date) : "—"}). Δεν διαγράφεται αυτόματα· ελέγξτε την.">εκτός περιόδου απασχόλησης</span>` : "";
+
 export async function pending(params) {
   const F = (S.filters.pending ??= { status: "open", store: "", q: "" });
   if (params.get("f")) F.status = params.get("f");
@@ -119,7 +123,7 @@ export async function pending(params) {
     </div>
     ${list.length ? `<div class="table-wrap"><table class="stack"><thead><tr><th>Εργαζόμενος</th><th>Κατάστημα</th><th class="hide-sm">Εταιρεία</th><th class="r">Ποσό</th><th>Κατάσταση</th><th></th></tr></thead><tbody>
       ${list.map((r) => `<tr>
-        <td><strong>${h(r.first)} ${h(r.last)}</strong><span class="sub">${h(r.code)}</span></td>
+        <td><strong>${h(r.first)} ${h(r.last)}</strong><span class="sub">${h(r.code)}${employmentNote(r)}</span></td>
         <td data-l="Κατάστημα">${h(r.store)}</td><td class="hide-sm">${h(r.company)}</td>
         <td class="r num" data-l="Ποσό">${r.amount != null ? money(r.amount) : "—"}</td>
         <td>${badge(r.status)}${r.signed_at ? `<span class="sub">${dateTime(r.signed_at)}</span>` : ""}</td>
@@ -488,7 +492,8 @@ function employeeDialog(e) {
   openDialog(`
     <div class="dlg-head"><h2>${isNew ? "Νέος εργαζόμενος" : "Επεξεργασία εργαζομένου"}</h2><button class="icon-btn" data-close>✕</button></div>
     <form id="ef"><div class="grid g2">
-      <div><label>Κωδικός εργαζομένου</label><input id="ef-code" required maxlength="80" value="${h(e.code)}" ${isNew ? "" : "readonly"}></div>
+      <div><label>Κωδικός εργαζομένου</label><input id="ef-code" ${isNew && S.api.mode !== "demo" ? `placeholder="Αυτόματα: επόμενος ελεύθερος αριθμός"` : "required"} maxlength="80" value="${h(e.code)}" ${isNew ? "" : "readonly"}>
+        ${isNew && S.api.mode !== "demo" ? `<p class="muted small" style="margin-top:4px">Αφήστε το κενό: ο κωδικός δίνεται από τον server (ενιαία αρίθμηση σε όλα τα καταστήματα, χωρίς επανάχρηση).</p>` : ""}</div>
       <div><label>Κατάσταση</label><select id="ef-status">${["Ενεργός", "Ανενεργός"].map((s) => `<option ${s === e.status ? "selected" : ""}>${s}</option>`).join("")}</select></div>
       <div><label>Όνομα</label><input id="ef-first" required maxlength="150" value="${h(e.first)}"></div>
       <div><label>Επώνυμο</label><input id="ef-last" required maxlength="150" value="${h(e.last)}"></div>
@@ -499,7 +504,9 @@ function employeeDialog(e) {
       <div><label>Πενθήμερο / εξαήμερο ${isNew ? "<span class='muted'>(υποχρεωτικό)</span>" : ""}</label><select id="ef-ww" ${isNew ? "required" : "disabled title='Αλλαγή με ημερομηνία ισχύος από την καρτέλα του εργαζομένου'"}><option value="">— επιλέξτε —</option><option value="5" ${e.work_week === 5 ? "selected" : ""}>Πενθήμερο</option><option value="6" ${e.work_week === 6 ? "selected" : ""}>Εξαήμερο</option></select></div>
       <div><label>Συμβατικές ώρες / εβδομάδα</label><input id="ef-wh" inputmode="decimal" value="${e.weekly_hours ? String(e.weekly_hours).replace(".", ",") : ""}" ${isNew ? "" : "disabled"}></div>
       <div><label>Email</label><input id="ef-email" type="email" maxlength="254" value="${h(e.email || "")}"></div>
-      <div><label>Τηλέφωνο</label><input id="ef-phone" maxlength="30" value="${h(e.phone || "")}"></div>`}
+      <div><label>Τηλέφωνο</label><input id="ef-phone" maxlength="30" value="${h(e.phone || "")}"></div>
+      <div><label>Ρόλος στο κατάστημα</label><select id="ef-srole"><option value="">—</option><option value="manager" ${e.store_role === "manager" ? "selected" : ""}>Manager</option><option value="assistant_manager" ${e.store_role === "assistant_manager" ? "selected" : ""}>Assistant manager</option></select>
+        <p class="muted small" style="margin-top:4px">Οι managers / assistant managers εμφανίζονται και στο πρόγραμμα και στο ημερολόγιο αδειών της Ρεσεψιόν του καταστήματός τους.</p></div>`}
     </div>
     ${isNew ? "" : `<p class="muted small" style="margin-top:10px">Μόνιμη μεταφορά, αποχώρηση και αλλαγή πενθήμερου/εξαήμερου γίνονται από την καρτέλα του εργαζομένου, με ημερομηνία ισχύος και ιστορικό.</p>`}
     ${isNew ? "" : `<p class="muted small" style="margin-top:10px">Ο κωδικός δεν αλλάζει, γιατί τον χρησιμοποιούν και οι άλλες εφαρμογές.</p>`}
@@ -513,10 +520,10 @@ function employeeDialog(e) {
           const v = { code: $("#ef-code").value.trim(), first: $("#ef-first").value.trim(), last: $("#ef-last").value.trim(), company: $("#ef-company").value, status: $("#ef-status").value };
           if (isNew || S.api.mode === "demo") v.store = $("#ef-store").value;
           if ($("#ef-spec")) {
-            Object.assign(v, { specialty: $("#ef-spec").value || null, hire_date: $("#ef-hire").value || null, email: $("#ef-email").value.trim().toLowerCase() || null, phone: $("#ef-phone").value.trim() || null });
+            Object.assign(v, { specialty: $("#ef-spec").value || null, store_role: $("#ef-srole").value || null, hire_date: $("#ef-hire").value || null, email: $("#ef-email").value.trim().toLowerCase() || null, phone: $("#ef-phone").value.trim() || null });
             if (isNew) { if (!$("#ef-ww").value) return ($("#ef-msg").textContent = "Επιλέξτε πενθήμερο ή εξαήμερο."); v.work_week = Number($("#ef-ww").value); v.weekly_hours = $("#ef-wh").value ? Number($("#ef-wh").value.replace(",", ".")) : null; }
           }
-          try { await S.api.saveEmployee(v, isNew); closeDialog(); invalidate(); toast("Αποθηκεύτηκε."); rerender(); }
+          try { const r = await S.api.saveEmployee(v, isNew); closeDialog(); invalidate(); toast(isNew && r?.code && !v.code ? `Αποθηκεύτηκε με κωδικό ${r.code}.` : "Αποθηκεύτηκε."); rerender(); }
           catch (err) { $("#ef-msg").textContent = err.message; }
         };
       },
@@ -551,20 +558,21 @@ async function importEmployees(file, existing) {
       const work_week = /^πενθ/i.test(norm(wws)) ? 5 : /^εξα/i.test(norm(wws)) ? 6 : null;
       if (hasExtra && hire) { const m = hire.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/) || hire.match(/^(\d{4})-(\d{2})-(\d{2})$/); if (!m) problem = "Ημερομηνία πρόσληψης: ΗΗ/ΜΜ/ΕΕΕΕ"; else hire_date = m[1].length === 4 ? `${m[1]}-${m[2]}-${m[3]}` : `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; }
       if (hasExtra && specialty && !specs.includes(specialty)) problem = "Άγνωστη ειδικότητα";
-      if (!code || !first || !last) problem = "Λείπουν στοιχεία";
-      else if (seen.has(code)) problem = "Διπλός κωδικός";
+      const auto = !code && S.api.mode !== "demo";   // κενός κωδικός: νέος εργαζόμενος με αυτόματο κωδικό από τον server
+      if ((!code && !auto) || !first || !last) problem = "Λείπουν στοιχεία";
+      else if (code && seen.has(code)) problem = "Διπλός κωδικός";
       else if (!stores.includes(store)) problem = "Άγνωστο κατάστημα";
       else if (!comps.includes(company)) problem = "Άγνωστη εταιρεία";
       else if (!["Ενεργός", "Ανενεργός"].includes(status)) problem = "Κατάσταση: Ενεργός ή Ανενεργός";
       if (!problem && hasExtra && wws && !work_week) problem = "Πενθήμερο/Εξαήμερο: γράψτε «Πενθήμερο» ή «Εξαήμερο»";
       if (!problem && S.api.mode !== "demo" && !ex.has(code) && !work_week) problem = "Νέος εργαζόμενος: λείπει «Πενθήμερο/Εξαήμερο»";
-      seen.add(code);
-      return { line: i + 2, code, first, last, store, company, status, problem, isNew: !ex.has(code), ...(hasExtra ? { specialty: specialty || null, hire_date, work_week, weekly_hours: whs ? Number(whs.replace(",", ".")) || null : null, email: email.toLowerCase() || null, phone: phone || null } : {}) };
+      if (code) seen.add(code);
+      return { line: i + 2, code: code || "AUTO", first, last, store, company, status, problem, isNew: !ex.has(code), ...(hasExtra ? { specialty: specialty || null, hire_date, work_week, weekly_hours: whs ? Number(whs.replace(",", ".")) || null : null, email: email.toLowerCase() || null, phone: phone || null } : {}) };
     });
     const ok = rows.filter((r) => !r.problem), bad = rows.filter((r) => r.problem);
     openDialog(`
       <div class="dlg-head"><h2>Εισαγωγή εργαζομένων</h2><button class="icon-btn" data-close>✕</button></div>
-      <div class="note ${bad.length ? "warn" : ""}">Νέοι: <strong>${ok.filter((r) => r.isNew).length}</strong> · Ενημερώσεις: <strong>${ok.filter((r) => !r.isNew).length}</strong>${bad.length ? ` · Με πρόβλημα: <strong>${bad.length}</strong> (δεν θα καταχωριστούν)` : ""}</div>
+      <div class="note ${bad.length ? "warn" : ""}">Νέοι: <strong>${ok.filter((r) => r.isNew).length}</strong>${ok.some((r) => r.code === "AUTO") ? ` (από αυτούς ${ok.filter((r) => r.code === "AUTO").length} χωρίς κωδικό → αυτόματος κωδικός)` : ""} · Ενημερώσεις: <strong>${ok.filter((r) => !r.isNew).length}</strong>${bad.length ? ` · Με πρόβλημα: <strong>${bad.length}</strong> (δεν θα καταχωριστούν)` : ""}</div>
       ${bad.length ? `<ul class="result-list">${bad.slice(0, 40).map((r) => `<li>Γραμμή ${r.line} (${h(r.code || "—")}): ${h(r.problem)}</li>`).join("")}</ul>` : ""}
       <div class="dlg-foot"><button class="btn" data-close>Άκυρο</button><button class="btn primary" id="im-ok" ${ok.length ? "" : "disabled"}>Καταχώριση ${ok.length}</button></div>`,
       {

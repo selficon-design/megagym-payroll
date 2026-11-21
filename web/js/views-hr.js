@@ -3,7 +3,7 @@ import { S, can, role, getEmployees, visibleStores, invalidate } from "./core.js
 import { $, $$, h, dmy, toast, openDialog, closeDialog, confirmBox, norm, downloadXlsx, saveBlob } from "./util.js";
 import {
   CATEGORIES, EMPLOYEE_CATS, MANAGER_CATS, flowOf, FLOW_NOTE, REQ_STATUS, reqBadge, who, renderTemplate, leaveVars,
-  calendarDays, athens, athensToday, fileToPayload, base64ToBlob, reasonsFor, demoNotice, daysWord,
+  calendarDays, athens, athensToday, fileToPayload, base64ToBlob, reasonsFor, demoNotice, daysWord, isLeaveCat,
 } from "./hr-common.js";
 import { enterFill } from "./fill-launch.js";
 
@@ -78,7 +78,7 @@ export async function requests(params) {
     ${list.length ? `<div class="table-wrap"><table class="stack"><thead><tr><th>Αριθμός</th><th>Εργαζόμενος</th><th>Κατηγορία</th><th>Κατάσταση</th><th>Υποβολή</th><th>Υπεύθυνος</th></tr></thead><tbody>
       ${list.map((x) => `<tr class="click" data-id="${h(x.id)}"><td><strong class="num">${h(x.ref)}</strong><span class="sub">${x.process === "manager" ? "Αναφορά manager" : "Αίτημα εργαζομένου"}</span></td>
         <td><strong>${h(x.employee_name)}</strong><span class="sub">${h(x.employee_code)} · ${h(x.store)}</span></td>
-        <td data-l="Κατηγορία">${h(CATEGORIES[x.category])}${x.category === "leave" && x.start_date ? `<span class="sub">${dmy(x.start_date)} – ${dmy(x.end_date)} · ${daysWord(x.days_requested)} ημ.</span>` : ""}</td>
+        <td data-l="Κατηγορία">${h(CATEGORIES[x.category])}${isLeaveCat(x.category) && x.start_date ? `<span class="sub">${dmy(x.start_date)} – ${dmy(x.end_date)} · ${daysWord(x.days_requested)} ημ.</span>` : ""}</td>
         <td>${reqBadge(x.status)}${x.status === "approved" && x.notified_at ? `<span class="sub">ενημερώθηκε${x.impl_claimed_by ? " · σε υλοποίηση" : ""}</span>` : ""}${Number(x.leave_excess) > 0 && !["approved", "completed", "rejected"].includes(x.status) ? `<span class="sub"><span class="badge b-voided">υπέρβαση ${String(x.leave_excess).replace(".", ",")}</span></span>` : ""}</td>
         <td data-l="Υποβολή" class="small">${x.submitted_at ? athens(x.submitted_at) : "—"}</td><td data-l="Υπεύθυνος" class="small">${h(x.assignee || "—")}</td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty"><div class="big">✉︎</div>Δεν βρέθηκαν αιτήματα με αυτά τα φίλτρα.</div>`}
@@ -135,7 +135,7 @@ export async function requestNew(params, existing = null) {
     const label = R.leaveTypes.find((x) => x.code === lt)?.label || "";
     const cal = calendarDays(a, b);
     $("#rf-cal") && ($("#rf-cal").textContent = cal ? `Ημερολογιακές ημέρες διαστήματος: ${cal}. Δεν ταυτίζονται απαραίτητα με τις ημέρες άδειας.` : "");
-    if (!st.bodyEdited && $("#rf-body") && st.cat === "leave") {
+    if (!st.bodyEdited && $("#rf-body") && isLeaveCat(st.cat)) {
       $("#rf-body").value = renderTemplate(R.tpl.leave_request_body?.body, { είδος_άδειας: label, έναρξη: dmy(a), λήξη: dmy(b), ημέρες: daysWord($("#rf-days").value), ονοματεπώνυμο: empOf()?.first ? `${empOf().first} ${empOf().last}` : "" });
     }
     clearTimeout(st.pt); st.pt = setTimeout(() => leavePreviewBox($("#rf-prev"), st.code, a, b, lt || orig?.leave_type, existing?.id), 350);
@@ -158,11 +158,13 @@ export async function requestNew(params, existing = null) {
         <label>Προτεινόμενη ενέργεια</label><textarea id="rf-prop" maxlength="4000" rows="2" required>${h(d("proposed_action"))}</textarea>${fileBox}`;
     } else if (st.mode === "employee_fill") {
       html = `<div class="note warn" style="margin-top:14px">Ο εργαζόμενος θα συμπληρώσει ο ίδιος το αίτημα σε απομονωμένη οθόνη αυτής της συσκευής, χωρίς πρόσβαση σε άλλες καρτέλες ή δεδομένα. Μετά θα το ελέγξετε και θα το υποβάλετε εσείς.</div>
-        ${st.cat === "leave" ? `<label>Εισήγηση manager για την κάλυψη του προγράμματος (δεν τη βλέπει ο εργαζόμενος)</label><textarea id="rf-mnote" maxlength="4000" rows="2">${h(v("manager_note"))}</textarea>` :
+        ${isLeaveCat(st.cat) ? `<label>Εισήγηση manager για την κάλυψη του προγράμματος (δεν τη βλέπει ο εργαζόμενος)</label><textarea id="rf-mnote" maxlength="4000" rows="2">${h(v("manager_note"))}</textarea>` :
           `<label>Σημείωση manager (δεν τη βλέπει ο εργαζόμενος)</label><textarea id="rf-mnote" maxlength="4000" rows="2">${h(v("manager_note"))}</textarea>`}`;
-    } else if (st.cat === "leave") {
+    } else if (isLeaveCat(st.cat)) {
       html = `<div class="grid g2">
-          <div><label>Είδος άδειας</label><select id="rf-lt" required><option value="">— επιλέξτε —</option>${R.leaveTypes.filter((x) => x.active).map((x) => `<option value="${x.code}" ${x.code === v("leave_type") ? "selected" : ""}>${h(x.label)}</option>`).join("")}</select></div>
+          ${st.cat === "sick_leave"
+            ? `<div><label>Είδος άδειας</label><input type="hidden" id="rf-lt" value="sick"><p style="margin:8px 0 0"><strong>Αναρρωτική Άδεια</strong> <span class="muted small">· δεν αφαιρείται από την κανονική άδεια· ελέγχεται η κάλυψη αποδοχών</span></p></div>`
+            : `<div><label>Είδος άδειας</label><select id="rf-lt" required><option value="">— επιλέξτε —</option>${R.leaveTypes.filter((x) => x.active && x.code !== "sick").map((x) => `<option value="${x.code}" ${x.code === v("leave_type") ? "selected" : ""}>${h(x.label)}</option>`).join("")}</select></div>`}
           <div><label>Αριθμός αιτούμενων ημερών άδειας</label><input id="rf-days" inputmode="decimal" value="${h(v("days_requested"))}" required></div>
           <div><label>Ημερομηνία έναρξης</label><input type="date" id="rf-start" value="${h(v("start_date"))}" required></div>
           <div><label>Ημερομηνία λήξης (συμπεριλαμβάνεται)</label><input type="date" id="rf-end" value="${h(v("end_date"))}" required></div>
@@ -191,7 +193,7 @@ export async function requestNew(params, existing = null) {
     $("#rf-actions").innerHTML = st.mode === "employee_fill" && kind === "employee" && !existing
       ? `<button class="btn primary" id="rf-fill">Άνοιγμα φόρμας εργαζομένου →</button>`
       : `<button class="btn" id="rf-save">Αποθήκευση προχείρου</button><button class="btn primary" id="rf-submit">Υποβολή</button>`;
-    if ((st.cat === "leave" || st.cat === "leave_change") && st.mode === "manager_record") {
+    if ((isLeaveCat(st.cat) || st.cat === "leave_change") && st.mode === "manager_record") {
       ["rf-lt", "rf-start", "rf-end", "rf-days"].forEach((id) => $("#" + id) && ($("#" + id).oninput = leaveField));
       $("#rf-body").oninput = () => (st.bodyEdited = true);
       leaveField();
@@ -210,8 +212,8 @@ export async function requestNew(params, existing = null) {
       if ($("#rf-mnote")) p.manager_note = val("rf-mnote");
       if (st.mode === "manager_record") {
         p.body = val("rf-body");
-        if (st.cat === "leave") {
-          Object.assign(p, { leave_type: val("rf-lt"), start_date: val("rf-start"), end_date: val("rf-end"), days_requested: val("rf-days"), template_version_id: R.tpl.leave_request_body?.id });
+        if (isLeaveCat(st.cat)) {
+          Object.assign(p, { leave_type: st.cat === "sick_leave" ? undefined : val("rf-lt"), start_date: val("rf-start"), end_date: val("rf-end"), days_requested: val("rf-days"), template_version_id: R.tpl.leave_request_body?.id });
           p.details = { notes: val("rf-notes") };
         } else if (st.cat === "leave_change") {
           Object.assign(p, { original_request_id: orig?.id, start_date: val("rf-start"), end_date: val("rf-end") });
@@ -266,7 +268,7 @@ const ACTION_GR = {
   info_provided: "Διευκρινίσεις", notified: "Ενημέρωση εργαζομένου", implemented: "Υλοποίηση", report_closed: "Ολοκλήρωση εξέτασης",
   warning_communicated: "Κοινοποίηση προειδοποίησης", attachment: "Συνημμένο", fill_opened: "Άνοιγμα φόρμας εργαζομένου", employee_completed: "Ο εργαζόμενος ολοκλήρωσε τη φόρμα",
   impl_claimed: "Ανάληψη υλοποίησης (manager)", leave_backfill: "Μεταφορά στις ημέρες άδειας (3.0)", leave_cancelled: "Ακύρωση άδειας", leave_partially_cancelled: "Μερική ακύρωση άδειας",
-  leave_changed: "Αλλαγή ημερομηνιών άδειας", overdraw_approved: "Ειδική έγκριση υπέρβασης (ΓΔ)", task_added: "Εργασία HR/λογιστηρίου", task_done: "Ολοκλήρωση εργασίας",
+  leave_changed: "Αλλαγή ημερομηνιών άδειας", dates_revised: "Νέες ημερομηνίες (εκκρεμές αίτημα)", category_migrated: "Μεταφορά στην κατηγορία «Αναρρωτική Άδεια» (3.1)", overdraw_approved: "Ειδική έγκριση υπέρβασης (ΓΔ)", task_added: "Εργασία HR/λογιστηρίου", task_done: "Ολοκλήρωση εργασίας",
 };
 const OUTCOME_GR = { approve: "Έγκριση", reject: "Απόρριψη", needs_info: "Απαιτούνται διευκρινίσεις" };
 
@@ -276,7 +278,7 @@ export async function requestView(params) {
   if (params.get("edit")) { const r = await S.api.request(id); return requestNew(new URLSearchParams(), r); }
   const [r, R] = await Promise.all([S.api.request(id), hrRefs()]);
   S.api.notifRead(id).then((n) => { if (n) window.dispatchEvent(new Event("mg:answers")); }).catch(() => {});
-  const isLeave = ["leave", "leave_change"].includes(r.category);
+  const isLeave = isLeaveCat(r.category) || r.category === "leave_change";
   const fromCal = params.get("from") === "leaves" && can.leave(); // ήρθε από το ημερολόγιο αδειών: κουμπί επιστροφής
   const [L, T] = await Promise.all([isLeave ? S.api.leaveCheck(id).catch(() => null) : null, can.decide() ? S.api.requestTasks(id).catch(() => []) : []]);
   const flow = flowOf(r.category);
@@ -316,7 +318,10 @@ export async function requestView(params) {
     else A.push(["implement", "Ολοκλήρωση υλοποίησης", "primary"]);
   }
   const activeDays = L?.active_days?.length || 0;
-  if (r.category === "leave" && ["approved", "completed"].includes(r.status) && activeDays && can.createRequests()) A.push(["change", "Αλλαγή ημερομηνιών", ""]);
+  if (isLeaveCat(r.category) && ["approved", "completed"].includes(r.status) && activeDays && can.createRequests()) A.push(["change", "Αλλαγή ημερομηνιών", ""]);
+  // Εκκρεμές αίτημα άδειας: ο manager αλλάζει τις ημερομηνίες χωρίς έγκριση· κρατιούνται όλες οι αναθεωρήσεις
+  if (isLeaveCat(r.category) && ["submitted", "under_review", "needs_info", "awaiting_gm"].includes(r.status) && can.createRequests())
+    A.push(["redate", "Αλλαγή ημερομηνιών (εκκρεμές)", ""]);
   if (isLeave && activeDays && can.leaveCancel()) A.push(["lcancel", "Ακύρωση άδειας (ολική / μερική)", "danger"]);
   if (flow !== "warning" && ["approved", "rejected", "needs_info"].includes(r.status) && !r.notified_at && (isMgr || can.decide())) A.push(["notified", "Ενημέρωσα τον εργαζόμενο", ""]);
   if (r.status !== "completed" && !(isMgr && !["draft", "needs_info"].includes(r.status))) A.push(["attach", "Προσθήκη συνημμένου", "ghost"]);
@@ -325,7 +330,7 @@ export async function requestView(params) {
   const decisionHtml = (x) => `<div class="decision ${x.superseded_at ? "old" : ""}">
     <div class="row-actions" style="justify-content:space-between"><strong>${OUTCOME_GR[x.outcome]}${x.is_revision ? " · αναθεώρηση" : ""}</strong>
       <span class="muted small">${h(x.decided_by)} (${x.decided_role === "owner" ? "ΓΔ" : "HR"}) · ${athens(x.decided_at)}${x.superseded_at ? ` · αντικαταστάθηκε ${athens(x.superseded_at)}` : " · ισχύει"}</span></div>
-    ${x.outcome === "approve" && x.approved_start ? `<p class="small" style="margin-top:6px">Εγκρίθηκε: ${dmy(x.approved_start)} – ${dmy(x.approved_end)} · ${daysWord(x.approved_days)} ημέρες</p>` : ""}
+    ${x.outcome === "approve" && x.approved_start ? approvedDaysHtml(x) : ""}
     ${x.reason_label ? `<p class="small" style="margin-top:6px">Λόγος: <strong>${h(x.reason_label)}</strong> — ${h(x.reason_text)}${x.alternative ? `<br>Εναλλακτικό διάστημα: ${h(x.alternative)}` : ""}</p>` : ""}
     ${x.info_requested ? `<p class="small" style="margin-top:6px">Ζητήθηκαν: ${h(x.info_requested)}</p>` : ""}
     <div class="statement" style="margin-top:8px">${h(x.message)}</div></div>`;
@@ -339,7 +344,10 @@ export async function requestView(params) {
   <div class="grid g2-1">
     <div>
       <div class="card"><h3>Αίτημα</h3>
-        ${r.category === "leave" ? kv([["Είδος άδειας", h(r.leave_type_label)], ["Διάστημα", r.start_date ? `${dmy(r.start_date)} έως και ${dmy(r.end_date)}` : ""], ["Ημερολογιακές ημέρες", calendarDays(r.start_date, r.end_date)], ["Αιτούμενες ημέρες άδειας", daysWord(r.days_requested)]]) : ""}
+        ${isLeaveCat(r.category) ? kv([["Είδος άδειας", h(r.leave_type_label)], ["Διάστημα", r.start_date ? `${dmy(r.start_date)} έως και ${dmy(r.end_date)}` : ""], ["Ημερολογιακές ημέρες", calendarDays(r.start_date, r.end_date)], ["Αιτούμενες ημέρες άδειας", daysWord(r.days_requested)],
+          ...(r.revisions?.length > 1 ? [["Αναθεώρηση ημερομηνιών", `${r.date_revision} <span class="muted small">(αρχικά ${dmy(r.revisions[0].start_date)} – ${dmy(r.revisions[0].end_date)})</span>`]] : [])]) : ""}
+        ${r.revisions?.length > 1 ? `<h4 style="margin-top:14px">Αναθεωρήσεις ημερομηνιών</h4><div class="table-wrap"><table><thead><tr><th>#</th><th>Διάστημα</th><th class="r">Ημέρες</th><th>Λόγος</th><th>Από</th></tr></thead><tbody>
+          ${r.revisions.map((v) => `<tr${v.rev_no === r.date_revision ? ` class="on"` : ""}><td class="num">${v.rev_no}${v.rev_no === r.date_revision ? ` <span class="badge b-info">τρέχουσα</span>` : ""}</td><td class="small">${dmy(v.start_date)} – ${dmy(v.end_date)}</td><td class="r num">${daysWord(v.days_requested)}</td><td class="small">${h(v.reason || "")}</td><td class="small">${h(who(v.changed_by))}<span class="sub">${athens(v.changed_at)}</span></td></tr>`).join("")}</tbody></table></div>` : ""}
         ${r.details?.subject ? kv([["Θέμα", h(r.details.subject)]]) : ""}
         ${r.body ? `<div class="statement">${h(r.body)}</div>` : r.process === "employee" ? `<p class="muted" style="margin-top:10px">${r.entry_mode === "employee_fill" ? "Ο εργαζόμενος δεν έχει συμπληρώσει ακόμη το κείμενο." : "Δεν υπάρχει κείμενο ακόμη."}</p>` : ""}
         ${r.details?.notes ? kv([["Παρατηρήσεις", h(r.details.notes)]]) : ""}
@@ -416,6 +424,7 @@ export async function requestView(params) {
     if (k === "claim") return doIt(() => S.api.reqImplClaim(r.id, r.version), "Αναλάβατε την υλοποίηση.");
     if (k === "implement") return implementDialog(r, reload);
     if (k === "change") return (location.hash = `#/request-new?kind=change&orig=${r.id}`);
+    if (k === "redate") return redateDialog(r, reload);
     if (k === "lcancel") return cancelLeaveDialog(r, L, reload);
     if (k === "task") return taskDialog(r, reload);
     if (k === "complete") {
@@ -488,13 +497,53 @@ function warningDraftDialog(r, R, reload) {
   });
 }
 
+/** Εγκεκριμένες vs αιτούμενες ημέρες μιας απόφασης (μερική έγκριση / άλλες ημερομηνίες) */
+function approvedDaysHtml(x) {
+  const list = Array.isArray(x.approved_dates) ? x.approved_dates : [];
+  const span = x.approved_start && x.approved_end ? (new Date(x.approved_end) - new Date(x.approved_start)) / 864e5 + 1 : 0;
+  const partial = list.length && list.length < span;
+  let html = `<p class="small" style="margin-top:6px">Εγκρίθηκε: ${partial ? list.map((d) => dmy(d).slice(0, 5)).join(", ") + "/" + String(x.approved_end).slice(0, 4) : `${dmy(x.approved_start)} – ${dmy(x.approved_end)}`} · ${daysWord(x.approved_days)} ημέρες</p>`;
+  if (x.diff_reason && x.requested_start) {
+    const req = [];
+    for (let d = new Date(x.requested_start + "T12:00:00Z"); d <= new Date(x.requested_end + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1)) req.push(d.toISOString().slice(0, 10));
+    const no = req.filter((d) => !list.includes(d));
+    html += `<div class="note warn small" style="margin-top:6px">Αιτήθηκε: ${dmy(x.requested_start)} – ${dmy(x.requested_end)} · ${daysWord(x.requested_days)} ημέρες${x.date_revision > 1 ? ` (αναθεώρηση ${x.date_revision})` : ""}
+      ${no.length ? `<br>Ημέρες του αιτήματος που <strong>δεν εγκρίθηκαν</strong>: ${no.map((d) => dmy(d).slice(0, 5)).join(", ")}` : ""}<br>Αιτιολογία διαφοροποίησης: ${h(x.diff_reason)}</div>`;
+  }
+  return html;
+}
+
+/** Αλλαγή ημερομηνιών ΕΚΚΡΕΜΟΥΣ αιτήματος άδειας (πριν από την απόφαση): νέα αναθεώρηση, ενημέρωση του εγκρίνοντα. */
+function redateDialog(r, reload) {
+  openDialog(`<div class="dlg-head"><div><div class="eyebrow">${h(r.ref)} · ${h(r.employee_name)}</div><h2>Αλλαγή ημερομηνιών (εκκρεμές αίτημα)</h2></div><button class="icon-btn" data-close>✕</button></div>
+    <div class="note">Τρέχουσες: ${dmy(r.start_date)} – ${dmy(r.end_date)} · ${daysWord(r.days_requested)} ημέρες${r.date_revision > 1 ? ` (αναθεώρηση ${r.date_revision})` : ""}. Οι αρχικές ημερομηνίες και κάθε αλλαγή κρατιούνται στο ιστορικό. Ο αρμόδιος για την απόφαση ενημερώνεται· η απόφαση θα αφορά τις νέες ημερομηνίες.</div>
+    <div class="grid g3"><div><label>Νέα έναρξη</label><input type="date" id="rd-s" value="${h(r.start_date)}"></div><div><label>Νέα λήξη (συμπεριλαμβάνεται)</label><input type="date" id="rd-e" value="${h(r.end_date)}"></div>
+      <div><label>Ημέρες άδειας</label><input id="rd-d" inputmode="decimal" value="${h(r.days_requested)}"></div></div>
+    <div id="rd-prev"></div>
+    <label>Λόγος αλλαγής</label><textarea id="rd-r" rows="2" maxlength="2000"></textarea><p id="rd-m" class="form-msg"></p>
+    <div class="dlg-foot"><button class="btn" data-close>Άκυρο</button><button class="btn primary" id="rd-ok">Αποθήκευση νέων ημερομηνιών</button></div>`, {
+    onOpen() {
+      const prev = () => leavePreviewBox($("#rd-prev"), r.employee_code, $("#rd-s").value, $("#rd-e").value, r.leave_type, r.id);
+      $("#rd-s").onchange = $("#rd-e").onchange = prev; prev();
+      $("#rd-ok").onclick = async () => {
+        const b = $("#rd-ok"); b.disabled = true;
+        try {
+          await S.api.reqChangeDates(r.id, $("#rd-s").value, $("#rd-e").value, Number(String($("#rd-d").value).replace(",", ".")), $("#rd-r").value.trim(), r.version);
+          closeDialog(); toast("Οι νέες ημερομηνίες αποθηκεύτηκαν· ενημερώθηκε ο αρμόδιος για την απόφαση."); reload();
+        } catch (e) { $("#rd-m").textContent = e.message; b.disabled = false; }
+      };
+    },
+  });
+}
+
 function decisionDialog(r, R, cur, reload, only = null) {
   const flow = flowOf(r.category);
-  const isLeave = r.category === "leave" || r.category === "leave_change";
+  const isLeave = isLeaveCat(r.category) || r.category === "leave_change";
+  const partialOk = isLeaveCat(r.category);   // μερική έγκριση: όχι στο αίτημα αλλαγής εγκεκριμένης άδειας
   const reasons = reasonsFor(R.reasons, r);
   const revision = ["approved", "rejected"].includes(r.status);
   const outcomes = only ? [only] : flow === "warning" ? ["approve", "reject"] : revision ? ["approve", "reject"] : ["approve", "reject", "needs_info"];
-  const st = { o: outcomes[0], edited: false };
+  const st = { o: outcomes[0], edited: false, mode: "all" };
   const tplKey = (o) => (isLeave ? { approve: "leave_approve", reject: "leave_reject", needs_info: "leave_needs_info" } : { approve: "generic_approve", reject: "generic_reject", needs_info: "generic_needs_info" })[o];
   openDialog(`<div class="dlg-head"><div><div class="eyebrow">${h(r.ref)} · ${h(r.employee_name)}</div><h2>${revision ? "Αναθεώρηση απόφασης" : flow === "warning" ? "Τελική απόφαση για την προειδοποίηση" : "Απόφαση"}</h2></div><button class="icon-btn" data-close>✕</button></div>
     ${revision ? `<div class="note warn">Η τρέχουσα απόφαση (${h(OUTCOME_GR[cur?.outcome] || "")}) θα παραμείνει στο ιστορικό ως προηγούμενη.</div>` : ""}
@@ -509,7 +558,7 @@ function decisionDialog(r, R, cur, reload, only = null) {
       const vars = () => {
         const extra = {};
         if (isLeave && st.o === "approve") Object.assign(extra, { έναρξη: dmy($("#dd-s")?.value), λήξη: dmy($("#dd-e")?.value),
-          ημέρες: daysWord(st.plan?.annual ? String($$(".dd-ch").reduce((a, x) => a + Number(x.value), 0) || st.plan.requested) : $("#dd-d")?.value) });
+          ημέρες: daysWord(st.plan?.annual ? String($$(".dd-ch").filter((x) => !(partialOk && st.mode === "some" && st.excluded?.has(x.dataset.day))).reduce((a, x) => a + Number(x.value), 0) || st.plan.requested) : partialOk && st.mode === "some" && st.plan ? String(st.plan.days.length - (st.excluded?.size || 0)) : $("#dd-d")?.value) });
         if (st.o === "reject") Object.assign(extra, { αιτιολογία: $("#dd-rt")?.value.trim().replace(/\.$/, ""), εναλλακτικό_διάστημα: $("#dd-alt")?.value.trim() || "Προς συνεννόηση" });
         if (st.o === "needs_info") extra.στοιχεία = $("#dd-info")?.value.trim();
         return leaveVars(r, extra);
@@ -521,9 +570,13 @@ function decisionDialog(r, R, cur, reload, only = null) {
       const draw = () => {
         $$("#dd-o .chip").forEach((c) => c.classList.toggle("on", c.dataset.o === st.o));
         let f = "";
-        if (st.o === "approve" && isLeave) f = `<div class="grid g3"><div><label>Εγκεκριμένη έναρξη</label><input type="date" id="dd-s" value="${h(r.start_date)}"></div>
+        if (st.o === "approve" && isLeave) f = `${partialOk ? `<label>Τι εγκρίνεται</label><div class="chips" id="dd-mode">
+            <button type="button" class="chip" data-m="all">Όλες οι αιτούμενες ημέρες</button><button type="button" class="chip" data-m="some">Μόνο συγκεκριμένες ημέρες</button><button type="button" class="chip" data-m="other">Άλλες ημερομηνίες</button></div>` : ""}
+          <div class="grid g3"><div><label>Εγκεκριμένη έναρξη</label><input type="date" id="dd-s" value="${h(r.start_date)}"></div>
           <div><label>Εγκεκριμένη λήξη</label><input type="date" id="dd-e" value="${h(r.end_date)}"></div><div id="dd-dbox"><label>Εγκεκριμένες ημέρες άδειας</label><input id="dd-d" inputmode="decimal" value="${h(r.days_requested || "")}"></div></div>
-          <div id="dd-plan" style="margin-top:10px"><div class="spinner"></div></div>`;
+          <div id="dd-plan" style="margin-top:10px"><div class="spinner"></div></div>
+          <div id="dd-cmp" style="margin-top:10px"></div>
+          <div id="dd-diffbox" hidden><label>Αιτιολογία διαφοροποίησης από το αίτημα (υποχρεωτική)</label><textarea id="dd-diff" rows="2" maxlength="2000" placeholder="π.χ. Δεν καλύπτεται το πρόγραμμα 16–17/12"></textarea></div>`;
         if (st.o === "approve" && flow === "warning") f = `<div class="note warn" style="margin-top:12px">Εγκρίνετε το τελικό κείμενο της προειδοποίησης (μπορείτε να το διορθώσετε). Η κοινοποίηση γίνεται μετά από το HR.</div>`;
         if (st.o === "reject") f = `<label>Λόγος απόρριψης</label><select id="dd-r"><option value="">— επιλέξτε —</option>${reasons.map((x) => `<option value="${x.code}">${h(x.label)}</option>`).join("")}</select>
           ${isLeave && !reasons.some((x) => x.code === "ops_needs") ? `<p class="muted small" style="margin-top:6px">Για ${h(r.leave_type_label)} δεν εμφανίζονται λόγοι επιχειρησιακών αναγκών.</p>` : ""}
@@ -545,21 +598,37 @@ function decisionDialog(r, R, cur, reload, only = null) {
           const loadPlan = async () => {
             try {
               st.plan = await S.api.leavePreview(r.employee_code, $("#dd-s").value, $("#dd-e").value, r.leave_type || L0?.leave_type, r.id);
+              st.excluded = new Set();
               drawPlan();
             } catch (e) { $("#dd-plan") && ($("#dd-plan").innerHTML = `<div class="note bad">${h(e.message)}</div>`); }
           };
+          const setMode = (m) => {
+            st.mode = m;
+            $$("#dd-mode .chip").forEach((c) => c.classList.toggle("on", c.dataset.m === m));
+            const lock = partialOk && m !== "other";
+            if (lock) { $("#dd-s").value = r.start_date; $("#dd-e").value = r.end_date; }
+            $("#dd-s").disabled = $("#dd-e").disabled = lock;
+            loadPlan();
+          };
+          $$("#dd-mode .chip").forEach((c) => (c.onclick = () => setMode(c.dataset.m)));
           $("#dd-s").onchange = $("#dd-e").onchange = loadPlan;
-          loadPlan();
+          if (partialOk) setMode(st.mode); else loadPlan();
         }
       };
       const L0 = r.original_request_id ? { leave_type: null } : null;
       const drawPlan = () => {
         const P = st.plan; if (!P || !$("#dd-plan") || st.o !== "approve") return;
         $("#dd-dbox").hidden = !!P.annual;
-        const charged = () => $$(".dd-ch").reduce((a, x) => a + Number(x.value), 0);
-        const base = P.annual ? `<div class="table-wrap" style="max-height:220px"><table><thead><tr><th>Ημέρα</th><th>Εργάσιμη</th><th class="r">Χρέωση</th></tr></thead><tbody>
-          ${P.days.map((d) => `<tr><td class="small">${dmy(d.day)}${d.holiday ? ` <span class="muted">(${h(d.holiday)})</span>` : ""}</td><td class="small">${d.workday === null ? `<span class="badge b-missing">άγνωστο</span>` : d.workday ? "ναι" : "όχι"}</td>
-            <td class="r"><select class="dd-ch" data-day="${d.day}" ${d.workday === false ? "disabled" : ""}>${[1, 0.5, 0].map((v) => `<option value="${v}" ${Number(d.charge) === v ? "selected" : ""}>${String(v).replace(".", ",")}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>` : `<p class="muted small">Το είδος αυτό δεν χρεώνεται στην κανονική άδεια· καταχωρίζονται ${P.days.length} ημερολογιακές ημέρες απουσίας.</p>`;
+        const some = partialOk && st.mode === "some";
+        const inc = (day) => !st.excluded?.has(day);
+        const charged = () => $$(".dd-ch").filter((x) => inc(x.dataset.day)).reduce((a, x) => a + Number(x.value), 0);
+        const incCol = (d) => (some ? `<td><input type="checkbox" class="dd-inc" data-day="${d.day}" ${inc(d.day) ? "checked" : ""} aria-label="Εγκρίνεται ${dmy(d.day)}"></td>` : "");
+        const base = P.annual ? `<div class="table-wrap" style="max-height:220px"><table><thead><tr>${some ? "<th>Εγκρίνεται</th>" : ""}<th>Ημέρα</th><th>Εργάσιμη</th><th class="r">Χρέωση</th></tr></thead><tbody>
+          ${P.days.map((d) => `<tr class="${inc(d.day) ? "" : "muted-row"}">${incCol(d)}<td class="small">${dmy(d.day)}${d.holiday ? ` <span class="muted">(${h(d.holiday)})</span>` : ""}${inc(d.day) ? "" : ` <span class="badge b-voided">δεν εγκρίνεται</span>`}</td><td class="small">${d.workday === null ? `<span class="badge b-missing">άγνωστο</span>` : d.workday ? "ναι" : "όχι"}</td>
+            <td class="r"><select class="dd-ch" data-day="${d.day}" ${d.workday === false || !inc(d.day) ? "disabled" : ""}>${[1, 0.5, 0].map((v) => `<option value="${v}" ${Number(d.charge) === v ? "selected" : ""}>${String(v).replace(".", ",")}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>`
+          : some ? `<div class="table-wrap" style="max-height:220px"><table><thead><tr><th>Εγκρίνεται</th><th>Ημέρα</th></tr></thead><tbody>${P.days.map((d) => `<tr class="${inc(d.day) ? "" : "muted-row"}">${incCol(d)}<td class="small">${dmy(d.day)}${inc(d.day) ? "" : ` <span class="badge b-voided">δεν εγκρίνεται</span>`}</td></tr>`).join("")}</tbody></table></div>
+            <p class="muted small">Το είδος αυτό δεν χρεώνεται στην κανονική άδεια.</p>`
+          : `<p class="muted small">Το είδος αυτό δεν χρεώνεται στην κανονική άδεια· καταχωρίζονται ${P.days.length} ημερολογιακές ημέρες απουσίας.</p>`;
         const ex = Number(P.excess || 0);
         $("#dd-plan").innerHTML = `${base}
           ${P.annual ? `<p class="small" style="margin-top:6px">Ημέρες χρέωσης: <strong id="dd-sum">${String(P.requested).replace(".", ",")}</strong> · Διαθέσιμο βάσει αναλογίας: <strong>${P.available === null ? "—" : String(P.available).replace(".", ",")}</strong>${ex > 0 ? ` · <span class="badge b-voided">Υπέρβαση ${String(P.excess).replace(".", ",")}</span>` : ""}</p>` : ""}
@@ -569,8 +638,33 @@ function decisionDialog(r, R, cur, reload, only = null) {
           ${P.sick?.message ? `<div class="note warn">${h(P.sick.message)}</div>` : ""}
           ${ex > 0 ? (can.overdraw() ? `<label class="check" style="margin-top:6px"><input type="checkbox" id="dd-over"> Ειδική έγκριση υπέρβασης αναλογικού υπολοίπου (Γενική Διεύθυνση) — το αρνητικό υπόλοιπο διατηρείται</label>`
                        : `<div class="note bad">Υπέρβαση αναλογικού υπολοίπου: την έγκριση δίνει μόνο η Γενική Διευθύντρια. Μπορείτε να προωθήσετε, να απορρίψετε ή να ζητήσετε διευκρινίσεις.</div>`) : ""}`;
-        $$(".dd-ch").forEach((x) => (x.onchange = () => { $("#dd-sum").textContent = String(charged()).replace(".", ","); st.daysEdited = true; if (!st.edited) regen(); }));
+        $$(".dd-ch").forEach((x) => (x.onchange = () => { $("#dd-sum").textContent = String(charged()).replace(".", ","); st.daysEdited = true; drawCmp(); if (!st.edited) regen(); }));
+        $$(".dd-inc").forEach((x) => (x.onchange = () => { if (x.checked) st.excluded.delete(x.dataset.day); else st.excluded.add(x.dataset.day); drawPlan(); }));
+        if (P.annual && $("#dd-sum")) $("#dd-sum").textContent = String(charged()).replace(".", ",");
+        drawCmp();
         if (!st.edited) regen();
+      };
+      // Σύγκριση αιτούμενων / τελικών ημερών και επίπτωση στο υπόλοιπο, πριν από την απόφαση
+      const finalDays = () => (st.plan?.days || []).filter((d) => !(partialOk && st.mode === "some" && st.excluded?.has(d.day)));
+      const drawCmp = () => {
+        const P = st.plan; if (!P || !$("#dd-cmp")) return;
+        const fd = finalDays();
+        const s = $("#dd-s").value, e = $("#dd-e").value;
+        const chargedNow = P.annual ? $$(".dd-ch").filter((x) => fd.some((d) => d.day === x.dataset.day)).reduce((a, x) => a + Number(x.value), 0) : null;
+        const nDays = P.annual ? chargedNow : partialOk && st.mode === "some" ? fd.length : Number(String($("#dd-d")?.value || "").replace(",", "."));
+        const diff = s !== r.start_date || e !== r.end_date || fd.length < (P.days || []).length || (!P.annual && Number(nDays) !== Number(r.days_requested)) || (P.annual && Number(chargedNow) !== Number(r.leave_requested ?? chargedNow));
+        st.diff = partialOk && diff;
+        const fin = fd.length && fd.length < P.days.length ? fd.map((d) => dmy(d.day).slice(0, 5)).join(", ") + "/" + e.slice(0, 4) : `${dmy(s)} – ${dmy(e)}`;
+        const reqDays = []; for (let d = new Date(r.start_date + "T12:00:00Z"); d <= new Date(r.end_date + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1)) reqDays.push(d.toISOString().slice(0, 10));
+        const notAppr = reqDays.filter((x) => !fd.some((d) => d.day === x)).map((day) => ({ day }));
+        const after = P.annual && P.available !== null && P.available !== undefined ? Number(P.available) - Number(chargedNow) : null;
+        $("#dd-cmp").innerHTML = partialOk ? `<div class="note ${st.diff ? "warn" : ""}"><dl class="kv">
+            <dt>Αιτούμενες</dt><dd>${dmy(r.start_date)} – ${dmy(r.end_date)} · ${daysWord(r.days_requested)} ημέρες${r.date_revision > 1 ? ` <span class="muted small">(αναθεώρηση ${r.date_revision})</span>` : ""}</dd>
+            <dt>Τελικές</dt><dd><strong>${h(fin)}</strong> · ${P.annual ? `χρέωση ${String(chargedNow).replace(".", ",")} ημέρες` : `${fd.length} ημέρες`}</dd>
+            ${notAppr.length ? `<dt>Δεν εγκρίνονται</dt><dd>${notAppr.map((d) => dmy(d.day).slice(0, 5)).join(", ")}</dd>` : ""}
+            ${after !== null ? `<dt>Υπόλοιπο μετά την έγκριση</dt><dd>${String(Math.round(after * 100) / 100).replace(".", ",")}${after < 0 ? ` <span class="badge b-voided">αρνητικό</span>` : ""}</dd>` : ""}
+          </dl>${st.diff ? `<p class="small" style="margin:6px 0 0">Οι τελικές ημέρες διαφέρουν από τις αιτούμενες: γράψτε αιτιολογία. Μόνο οι εγκεκριμένες ημέρες καταχωρίζονται στο υπόλοιπο, στο ημερολόγιο και στο πρόγραμμα.</p>` : ""}</div>` : "";
+        $("#dd-diffbox") && ($("#dd-diffbox").hidden = !st.diff);
       };
       $$("#dd-o .chip").forEach((c) => (c.onclick = () => { st.o = c.dataset.o; draw(); }));
       $("#dd-msg").oninput = () => (st.edited = true);
@@ -581,8 +675,18 @@ function decisionDialog(r, R, cur, reload, only = null) {
         const p = { message: msg, template_version_id: flow === "warning" ? null : R.tpl[tplKey(st.o)]?.id };
         if (st.o === "approve" && isLeave) {
           Object.assign(p, { approved_start: $("#dd-s").value, approved_end: $("#dd-e").value, approved_days: $("#dd-d").value });
-          if (st.plan?.annual) p.days = $$(".dd-ch").map((x) => ({ day: x.dataset.day, charge: Number(x.value) }));
+          const some = partialOk && st.mode === "some";
+          if (some) {
+            p.include = finalDays().map((d) => d.day);
+            if (!p.include.length) return ($("#dd-m").textContent = "Επιλέξτε τουλάχιστον μία ημέρα για έγκριση.");
+            if (!st.plan?.annual) p.approved_days = String(p.include.length);
+          }
+          if (st.plan?.annual) p.days = $$(".dd-ch").filter((x) => !some || p.include.includes(x.dataset.day)).map((x) => ({ day: x.dataset.day, charge: Number(x.value) }));
           if ($("#dd-over")?.checked) p.overdraw_ok = true;
+          if (st.diff) {
+            p.diff_reason = $("#dd-diff").value.trim();
+            if (p.diff_reason.length < 5) return ($("#dd-m").textContent = "Γράψτε αιτιολογία διαφοροποίησης από το αίτημα.");
+          }
         }
         if (st.o === "reject") Object.assign(p, { reason_code: $("#dd-r").value, reason_text: $("#dd-rt").value.trim(), alternative: $("#dd-alt")?.value.trim() || null });
         if (st.o === "needs_info") p.info = $("#dd-info").value.trim();
@@ -679,8 +783,9 @@ function taskDialog(r, reload) {
   openDialog(`<div class="dlg-head"><h2>Εργασία για HR / λογιστήριο</h2><button class="icon-btn" data-close>✕</button></div>
     <p class="muted">Εξειδικευμένη ενέργεια που παρακολουθείται χωριστά από την υλοποίηση του manager (π.χ. «Έκδοση βεβαίωσης αποδοχών»).</p>
     <label>Υπεύθυνος</label><select id="tk-r"><option value="hr">HR</option><option value="accounting">Λογιστήριο</option></select>
-    <label>Ενέργεια</label><textarea id="tk-t" rows="2" maxlength="1000"></textarea><p id="tk-m" class="form-msg"></p>
+    <label>Ενέργεια</label><textarea id="tk-t" rows="2" maxlength="1000"></textarea>
+    <label>Προθεσμία (προαιρετικά)</label><input type="date" id="tk-d" style="width:auto"><p id="tk-m" class="form-msg"></p>
     <div class="dlg-foot"><button class="btn" data-close>Άκυρο</button><button class="btn primary" id="tk-ok">Προσθήκη</button></div>`, {
-    onOpen() { $("#tk-ok").onclick = async () => { try { await S.api.reqTaskAdd(r.id, $("#tk-r").value, $("#tk-t").value.trim()); closeDialog(); toast("Η εργασία προστέθηκε."); reload(); } catch (e) { $("#tk-m").textContent = e.message; } }; },
+    onOpen() { $("#tk-ok").onclick = async () => { try { await S.api.reqTaskAdd(r.id, $("#tk-r").value, $("#tk-t").value.trim(), $("#tk-d").value || null); closeDialog(); toast("Η εργασία προστέθηκε."); reload(); } catch (e) { $("#tk-m").textContent = e.message; } }; },
   });
 }

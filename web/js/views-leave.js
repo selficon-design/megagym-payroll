@@ -1,7 +1,7 @@
 // Άδειες: συγκεντρωτικό ημερολόγιο (έτος/μήνας), «Προς εκκαθάριση από το λογιστήριο», αργίες.
 // Απαντήσεις (αδιάβαστες ενημερώσεις ανά χρήστη) και εργασίες HR/λογιστηρίου.
 // Όλοι οι υπολογισμοί γίνονται στον server· εδώ μόνο εμφάνιση.
-import { S, can, role, visibleStores, activeSpecialties } from "./core.js";
+import { S, can, role, visibleStores, activeSpecialties, P } from "./core.js";
 import { $, $$, h, toast, openDialog, closeDialog, confirmBox, dmy, money, saveBlob } from "./util.js";
 import { athens, athensToday, fileToPayload, base64ToBlob, CATEGORIES, demoNotice } from "./hr-common.js";
 
@@ -47,7 +47,7 @@ async function calendarTab(body) {
   const byDay = {}; for (const r of rows) (byDay[r.day] ??= []).push(r);
   const emps = [...new Map(rows.map((r) => [r.employee_code, r.employee_name])).entries()];
   const chip = (r) => `<a class="lv-chip ${r.status}" href="#/request?id=${h(r.request_id)}&from=leaves" style="--c:${empColor(r.employee_code)}" title="${h(r.employee_name)} · ${h(r.label || "")} · ${STATUS_GR[r.status]} · ${h(r.ref)}">
-      <span class="mk" aria-hidden="true">${STATUS_MARK[r.status]}</span>${h(r.employee_name)}<span class="sr">${STATUS_GR[r.status]}</span></a>`;
+      <span class="mk" aria-hidden="true">${STATUS_MARK[r.status]}</span>${h(r.employee_name)}${r.store_role ? ` <em class="badge b-mgr">${r.store_role === "manager" ? "Manager" : "Ass. manager"}</em>` : ""}<span class="sr">${STATUS_GR[r.status]}</span></a>`;
   let grid;
   if (F.mode === "month") {
     const n = daysIn(F.y, F.m);
@@ -170,22 +170,94 @@ export async function answers(params) {
 }
 
 // ═══════════════════════ Εργασίες HR / λογιστηρίου ═══════════════════════
-export async function tasks() {
+// ═══════════════ «Οι εργασίες μου» & «Όλες οι ανατεθειμένες εργασίες» (ΓΔ) ═══════════════
+// Ο server (tasks_all) αποφασίζει τι βλέπει κάθε χρήστης: δικές του εργασίες στο πεδίο καταστημάτων του· η ΓΔ όλες,
+// χωρίς να τις αναλαμβάνει. Κενή λίστα ≠ αποτυχία φόρτωσης.
+const TASK_KIND = { request_task: "Εργασία HR / λογιστηρίου", implementation: "Υλοποίηση αιτήματος", store_report: "Αναφορά προς κατάστημα" };
+const TASK_ST = { open: ["Ανοιχτή", "b-pending"], in_progress: ["Σε εξέλιξη", "b-info"], waiting: ["Αναμονή ενημέρωσης", "b-missing"], done: ["Ολοκληρώθηκε", "b-signed"] };
+export async function tasks(params = new URLSearchParams()) {
   if (S.api.mode === "demo") return (view().innerHTML = demoNotice("Εργασίες"));
-  const list = await S.api.myTasks();
+  const all = P("tasks.view_all");
+  const F = (S.filters.tasks ??= { tab: "mine", who: "", store: "", status: "", from: "", to: "" });
+  if (params.get("tab")) F.tab = params.get("tab");
+  if (!all) F.tab = "mine";
+  view().innerHTML = `<div class="empty"><div class="spinner"></div></div>`;
+  let list;
+  try { list = await S.api.tasksAll(F.tab === "mine"); }
+  catch (e) {
+    view().innerHTML = `<div class="card empty"><p><strong>Οι εργασίες δεν φόρτωσαν.</strong></p><p class="muted small">${h(e.message || "Σφάλμα σύνδεσης")}</p><button class="btn primary" id="tk-retry">Επανάληψη</button></div>`;
+    $("#tk-retry").onclick = () => tasks(params);
+    return;
+  }
+  const inDates = (t) => (!F.from || t.assigned_at?.slice(0, 10) >= F.from) && (!F.to || t.assigned_at?.slice(0, 10) <= F.to);
+  const shown = F.tab === "mine" ? list.filter((t) => !F.status || t.status === F.status)
+    : list.filter((t) => (!F.who || t.responsible === F.who || t.claimed_by === F.who) && (!F.store || t.store === F.store) && (!F.status || (F.status === "overdue" ? t.overdue : t.status === F.status)) && inDates(t));
+  const cnt = (k) => list.filter((t) => (k === "overdue" ? t.overdue : t.status === k)).length;
+  const people = [...new Set(list.flatMap((t) => [t.responsible, t.claimed_by]).filter(Boolean))].sort();
   view().innerHTML = `
-  <div class="page-head"><div><div class="eyebrow">Προσωπικό</div><h1>Εργασίες μου</h1>
-    <p class="muted">Εξειδικευμένες ενέργειες ${role() === "accounting" ? "λογιστηρίου" : "HR"} σε εγκεκριμένα αιτήματα. Παρακολουθούνται χωριστά από την υλοποίηση του manager.</p></div></div>
-  <div class="card">${list.length ? `<div class="table-wrap"><table class="stack"><thead><tr><th>Αίτημα</th><th>Εργαζόμενος</th><th>Ενέργεια</th><th>Κατάσταση</th><th></th></tr></thead><tbody>
-    ${list.map((t) => `<tr><td class="num"><strong>${h(t.ref)}</strong><span class="sub">${h(CATEGORIES[t.category] || t.category)}</span></td><td>${h(t.employee_name)}<span class="sub">${h(t.store)}</span></td>
-      <td class="small">${h(t.description)}<span class="sub">${h(t.created_by)} · ${athens(t.created_at)}</span></td><td>${t.status === "done" ? `<span class="badge b-signed">Ολοκληρώθηκε</span>` : `<span class="badge b-pending">Ανοιχτή</span>`}</td>
-      <td class="acts" style="text-align:right">${t.status === "open" ? `<button class="btn sm primary" data-done="${t.id}">Ολοκλήρωση</button>` : ""}</td></tr>`).join("")}
-    </tbody></table></div>` : `<div class="empty">Δεν υπάρχουν εργασίες.</div>`}</div>`;
-  $$("[data-done]").forEach((b) => (b.onclick = async () => {
-    const note = await confirmBox("Ολοκλήρωση εργασίας", "Σύντομη σημείωση (προαιρετικά).", { ok: "Ολοκλήρωση", input: "Σημείωση" });
-    if (note === false || note === null) return;
-    try { await S.api.reqTaskDone(Number(b.dataset.done), typeof note === "string" ? note : ""); toast("Ολοκληρώθηκε."); tasks(); } catch (e) { toast(e.message, true); }
-  }));
+  <div class="page-head"><div><div class="eyebrow">Προσωπικό</div><h1>${F.tab === "mine" ? "Οι εργασίες μου" : "Όλες οι ανατεθειμένες εργασίες"}</h1>
+    <p class="muted">${F.tab === "mine" ? "Οι εργασίες που είναι στην ευθύνη σας, στο πεδίο καταστημάτων σας." : "Όλοι οι χρήστες και τα καταστήματα. Η παρακολούθηση δεν απαιτεί ανάληψη."}</p></div></div>
+  ${all ? `<div class="tabs"><a href="#/tasks?tab=mine" class="${F.tab === "mine" ? "on" : ""}">Οι εργασίες μου</a><a href="#/tasks?tab=all" class="${F.tab === "all" ? "on" : ""}">Όλες οι ανατεθειμένες εργασίες</a></div>` : ""}
+  <div class="card">
+    <div class="toolbar">
+      <div class="chips">${[["", "Όλες", list.length], ["open", "Ανοιχτές", cnt("open")], ["in_progress", "Σε εξέλιξη", cnt("in_progress")], ["waiting", "Αναμονή ενημέρωσης", cnt("waiting")], ["done", "Ολοκληρωμένες", cnt("done")], ...(F.tab === "all" ? [["overdue", "Σε καθυστέρηση", cnt("overdue")]] : [])]
+        .map(([k, l, n]) => `<button class="chip ${F.status === k ? "on" : ""}" data-st="${k}">${l}<span class="n">${n}</span></button>`).join("")}</div>
+      ${F.tab === "all" ? `<select id="tk-who"><option value="">Όλοι οι υπεύθυνοι</option>${people.map((p) => `<option ${p === F.who ? "selected" : ""}>${h(p)}</option>`).join("")}</select>
+        <select id="tk-store"><option value="">Όλα τα καταστήματα</option>${visibleStores().map((s) => `<option ${s === F.store ? "selected" : ""}>${h(s)}</option>`).join("")}</select>
+        <label class="small" style="margin:0">Από <input type="date" id="tk-from" value="${F.from}" style="width:auto"></label><label class="small" style="margin:0">Έως <input type="date" id="tk-to" value="${F.to}" style="width:auto"></label>` : ""}
+    </div>
+    ${shown.length ? `<div class="table-wrap"><table class="stack"><thead><tr><th>Εργασία</th><th>Σχετικό</th><th>Κατάστημα</th><th>Ανάθεση</th><th>Υπεύθυνος</th><th>Προθεσμία</th><th>Κατάσταση</th><th>Τελ. ενημέρωση</th></tr></thead><tbody>
+      ${shown.map((t, i) => `<tr class="click" data-i="${list.indexOf(t)}"><td><strong>${h(t.title)}</strong><span class="sub">${TASK_KIND[t.kind]}${t.notes ? ` · ${t.notes} σχόλια` : ""}${t.files ? ` · ${t.files} συνημμένα` : ""}</span></td>
+        <td class="small">${h(t.related_ref || "")}${t.employee_name ? `<span class="sub">${h(t.employee_name)}</span>` : ""}</td><td class="small">${h(t.store || "")}</td>
+        <td class="small">${h(t.assigned_by || "")}<span class="sub">${t.assigned_at ? athens(t.assigned_at) : ""}</span></td><td class="small">${h(t.responsible || "")}${t.claimed_by && t.claimed_by !== t.responsible ? `<span class="sub">ανάληψη: ${h(t.claimed_by)}</span>` : ""}</td>
+        <td class="small">${t.due_date ? dmy(t.due_date) : "—"}${t.overdue ? ` <span class="badge b-voided">καθυστέρηση</span>` : ""}</td>
+        <td><span class="badge ${TASK_ST[t.status]?.[1] || ""}">${h(t.status_label)}</span></td><td class="small">${t.updated_at ? athens(t.updated_at) : "—"}</td></tr>`).join("")}
+      </tbody></table></div>`
+      : `<div class="empty"><div class="big">☐</div>Δεν υπάρχουν εργασίες${F.status ? " με αυτό το φίλτρο" : ""}.</div>`}
+  </div>`;
+  const re = () => tasks(new URLSearchParams());
+  $$("[data-st]").forEach((b) => (b.onclick = () => { F.status = b.dataset.st; re(); }));
+  $("#tk-who") && ($("#tk-who").onchange = (e) => { F.who = e.target.value; re(); });
+  $("#tk-store") && ($("#tk-store").onchange = (e) => { F.store = e.target.value; re(); });
+  $("#tk-from") && ($("#tk-from").onchange = (e) => { F.from = e.target.value; re(); });
+  $("#tk-to") && ($("#tk-to").onchange = (e) => { F.to = e.target.value; re(); });
+  $$("tr[data-i]").forEach((tr) => (tr.onclick = () => taskDialog(list[Number(tr.dataset.i)], re)));
+}
+
+async function taskDialog(t, reload) {
+  let hist = [];
+  try { hist = await S.api.taskHistory(t.kind, t.ref); } catch (e) { return toast(e.message, true); }
+  const ACT = { created: "Ανάθεση", comment: "Σχόλιο", claimed: "Ανάληψη", done: "Ολοκλήρωση", attachment: "Συνημμένο", decide: "Απόφαση", revise: "Αναθεώρηση απόφασης",
+    notified: "Ενημερώθηκε ο εργαζόμενος", impl_claimed: "Ανάληψη υλοποίησης", implemented: "Ολοκλήρωση υλοποίησης", submitted: "Υποβολή", read: "Ανάγνωση", reply: "Απάντηση", completed: "Ολοκλήρωση" };
+  const link = t.kind === "store_report" ? `#/store-reports?id=${t.ref}` : `#/request?id=${t.related_id}`;
+  const noteOk = t.kind !== "store_report" && t.status !== "done";
+  openDialog(`<div class="dlg-head"><div><div class="eyebrow">${TASK_KIND[t.kind]} · ${h(t.related_ref || "")}</div><h2>${h(t.title)}</h2></div><button class="icon-btn" data-close>✕</button></div>
+    <dl class="kv"><dt>Κατάστημα</dt><dd>${h(t.store || "—")}</dd><dt>Ανάθεση</dt><dd>${h(t.assigned_by || "—")} · ${t.assigned_at ? athens(t.assigned_at) : ""}</dd>
+      <dt>Υπεύθυνος</dt><dd>${h(t.responsible || "—")}${t.claimed_by ? ` · ανάληψη ${h(t.claimed_by)}` : ""}</dd><dt>Προθεσμία</dt><dd>${t.due_date ? dmy(t.due_date) : "—"}${t.overdue ? ` <span class="badge b-voided">καθυστέρηση</span>` : ""}</dd>
+      <dt>Κατάσταση</dt><dd><span class="badge ${TASK_ST[t.status]?.[1] || ""}">${h(t.status_label)}</span></dd></dl>
+    <p><a href="${link}" data-close-link>Άνοιγμα ${t.kind === "store_report" ? "αναφοράς" : "αιτήματος"} →</a></p>
+    <h4 style="margin-top:12px">Ιστορικό</h4>
+    ${hist.length ? hist.map((x) => `<div class="list-item small"><div class="grow"><strong>${ACT[x.action] || h(x.action)}</strong>${x.note ? ` — ${h(x.note)}` : ""}${x.file_name ? ` · <a href="#" data-file="${h(x.id)}">${h(x.file_name)}</a>` : ""}<div class="muted">${h(x.actor)} · ${athens(x.at)}</div></div></div>`).join("") : `<p class="muted small">Καμία καταχώριση.</p>`}
+    ${noteOk ? `<label>Σχόλιο / ενημέρωση</label><textarea id="td-n" rows="2" maxlength="2000"></textarea><label>Συνημμένο (προαιρετικά · PDF ή εικόνα έως 4 MB)</label><input type="file" id="td-f" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic">` : ""}
+    <p id="td-m" class="form-msg"></p>
+    <div class="dlg-foot"><button class="btn" data-close>Κλείσιμο</button>
+      ${noteOk ? `<button class="btn" id="td-note">Προσθήκη σχολίου</button>` : ""}
+      ${t.can_act && t.kind === "request_task" && !t.claimed_by ? `<button class="btn" id="td-claim">Ανάληψη</button>` : ""}
+      ${t.can_act && t.kind === "request_task" ? `<button class="btn primary" id="td-done">Ολοκλήρωση</button>` : ""}
+      ${t.kind !== "request_task" ? `<a class="btn primary" href="${link}">${t.kind === "store_report" ? "Άνοιγμα αναφοράς" : "Άνοιγμα αιτήματος"}</a>` : ""}</div>`, {
+    onOpen() {
+      $$("[data-close-link], .dlg-foot a.btn").forEach((a) => a.addEventListener("click", () => closeDialog()));
+      $$("[data-file]").forEach((a) => (a.onclick = async (ev) => { ev.preventDefault(); try { const f = await S.api.taskFile(a.dataset.file); saveBlob(base64ToBlob(f.data, f.mime), f.name); } catch (e) { toast(e.message, true); } }));
+      const after = (msg) => { closeDialog(); toast(msg); reload(); };
+      const file = async () => ($("#td-f")?.files[0] ? fileToPayload($("#td-f").files[0]) : null);
+      $("#td-note") && ($("#td-note").onclick = async () => { try { await S.api.taskNote(t.kind, t.ref, $("#td-n").value, await file()); after("Καταχωρίστηκε."); } catch (e) { $("#td-m").textContent = e.message; } });
+      $("#td-claim") && ($("#td-claim").onclick = async () => { try { await S.api.taskClaim(t.ref); after("Αναλάβατε την εργασία."); } catch (e) { $("#td-m").textContent = e.message; } });
+      $("#td-done") && ($("#td-done").onclick = async () => {
+        try { const f = await file(); if (f) await S.api.taskNote(t.kind, t.ref, "", f); await S.api.reqTaskDone(Number(t.ref), $("#td-n").value.trim()); after("Η εργασία ολοκληρώθηκε."); }
+        catch (e) { $("#td-m").textContent = e.message; }
+      });
+    },
+  });
 }
 
 // Λήψη παραστατικού εκκαθάρισης

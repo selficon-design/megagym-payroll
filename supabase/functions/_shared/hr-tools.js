@@ -7,7 +7,7 @@
 import { KINDS, totals, metrics, warnings, daysBetween } from "./stats-calc.js";
 
 export const CATEGORY_GR = {
-  leave: "Άδεια / απουσία", leave_change: "Αλλαγή ημερομηνιών εγκεκριμένης άδειας", shift_change: "Αλλαγή βάρδιας, ρεπό ή προγράμματος", raise: "Αύξηση αποδοχών",
+  leave: "Άδεια / απουσία", sick_leave: "Αναρρωτική Άδεια", leave_change: "Αλλαγή ημερομηνιών εγκεκριμένης άδειας", shift_change: "Αλλαγή βάρδιας, ρεπό ή προγράμματος", raise: "Αύξηση αποδοχών",
   contract_change: "Αλλαγή ωρών ή σύμβασης", advance: "Προκαταβολή", documents: "Βεβαιώσεις και έγγραφα",
   transfer: "Μετακίνηση καταστήματος ή αλλαγή θέσης", other_hr: "Λοιπό αίτημα προς HR",
   negative_review: "Αρνητική αξιολόγηση (αναφορά manager)", incident: "Περιστατικό (αναφορά manager)",
@@ -148,7 +148,7 @@ export async function runHrTool(db, name, input, me) {
           ref: r.ref, type: r.process === "manager" ? "Αναφορά manager" : "Αίτημα εργαζομένου", category: CATEGORY_GR[r.category],
           employee: `${r.employee_name} (${r.employee_code})`, store: r.store, status: REQ_STATUS_GR[r.status],
           submitted: athens(r.submitted_at), assignee: r.assignee,
-          leave: r.category === "leave" ? { type: r.leave_type_label, from: dmy(r.start_date), to: dmy(r.end_date), days_requested: r.days_requested } : undefined,
+          leave: ["leave", "sick_leave"].includes(r.category) ? { type: r.leave_type_label, from: dmy(r.start_date), to: dmy(r.end_date), days_requested: r.days_requested } : undefined,
           incident_date: dmy(r.incident_date) || undefined,
           decision: D[r.id] ? { outcome: OUTCOME_GR[D[r.id].outcome], by: D[r.id].decided_by, at: athens(D[r.id].decided_at), approved: D[r.id].approved_start ? `${dmy(D[r.id].approved_start)} – ${dmy(D[r.id].approved_end)}, ${D[r.id].approved_days} ημέρες` : undefined, reason: D[r.id].reason_label || undefined } : null,
           employee_notified: r.notified_at ? athens(r.notified_at) : null, completed: athens(r.completed_at),
@@ -170,7 +170,7 @@ export async function runHrTool(db, name, input, me) {
         ref: r.ref, type: r.process === "manager" ? "Αναφορά manager" : "Αίτημα εργαζομένου", category: CATEGORY_GR[r.category],
         employee: `${r.employee_name} (${r.employee_code})`, store_at_the_time: r.store, specialty_at_the_time: r.specialty, status: REQ_STATUS_GR[r.status],
         stated_by: who(r.stated_by), written_by: who(r.written_by), submitted_by: r.submitted_by, submitted_at: athens(r.submitted_at), assignee: r.assignee,
-        text: r.body, leave: r.category === "leave" ? { type: r.leave_type_label, from: dmy(r.start_date), to: dmy(r.end_date), days_requested: r.days_requested } : undefined,
+        text: r.body, leave: ["leave", "sick_leave"].includes(r.category) ? { type: r.leave_type_label, from: dmy(r.start_date), to: dmy(r.end_date), days_requested: r.days_requested } : undefined,
         report: r.process === "manager" ? { incident_date: dmy(r.incident_date), ...r.details } : undefined,
         notes: r.details?.notes || r.details?.subject || undefined, manager_note: r.manager_note,
         hr_internal: internal ? { hr_note: internal.hr_note, warning_draft_exists: !!internal.warning_draft } : undefined,
@@ -186,7 +186,7 @@ export async function runHrTool(db, name, input, me) {
         (!isDate(input.from_date) || (r.submitted_at || r.created_at).slice(0, 10) >= input.from_date) &&
         (!isDate(input.to_date) || (r.submitted_at || r.created_at).slice(0, 10) <= input.to_date));
       const count = (key, label) => { const o = {}; for (const r of rows) { const k = label ? label[r[key]] : r[key]; o[k] = (o[k] || 0) + 1; } return o; };
-      const flow = (c) => (c === "leave" ? "leave" : ["raise", "contract_change"].includes(c) ? "gm" : c === "warning_request" ? "warning" : ["negative_review", "incident"].includes(c) ? "report" : "generic");
+      const flow = (c) => (["leave", "sick_leave", "leave_change"].includes(c) ? "leave" : ["raise", "contract_change"].includes(c) ? "gm" : c === "warning_request" ? "warning" : ["negative_review", "incident"].includes(c) ? "report" : "generic");
       const mine = rows.filter((x) => {
         if (me.role === "owner") return x.status === "awaiting_gm" || (["leave", "generic"].includes(flow(x.category)) && ["submitted", "under_review"].includes(x.status));
         if (me.role === "hr") return ["submitted", "under_review"].includes(x.status) && (!x.assignee || x.assignee === me.email);
@@ -199,7 +199,7 @@ export async function runHrTool(db, name, input, me) {
     }
     case "leave_calendar": {
       if (!isDate(input.from_date) || !isDate(input.to_date)) return { error: "Χρειάζονται ημερομηνίες YYYY-MM-DD" };
-      const rows = await all(() => { let q = db.from("hr_requests").select("id,ref,employee_name,employee_code,store,status,leave_type_label,start_date,end_date,days_requested,created_by").eq("category", "leave").neq("status", "draft"); if (input.store) q = q.eq("store", input.store); return q; });
+      const rows = await all(() => { let q = db.from("hr_requests").select("id,ref,employee_name,employee_code,store,status,leave_type_label,start_date,end_date,days_requested,created_by").in("category", ["leave", "sick_leave"]).neq("status", "draft"); if (input.store) q = q.eq("store", input.store); return q; });
       const ids = rows.map((r) => r.id);
       const dec = ids.length ? await all(() => db.from("hr_decisions").select("request_id,outcome,approved_start,approved_end,approved_days").in("request_id", ids).is("superseded_at", null)) : [];
       const D = Object.fromEntries(dec.map((d) => [d.request_id, d]));

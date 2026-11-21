@@ -455,3 +455,16 @@ table.entry td:first-child{min-width:170px}
 .guide table{font-size:13.5px}.guide td,.guide th{vertical-align:top}.guide code{background:rgba(0,0,0,.05);padding:1px 4px;border-radius:4px;font-size:.92em}
 .g-sec{scroll-margin-top:72px}
 @media print{#nav,.topbar,.g-tools,#g-print,#g-pdf,.fab{display:none!important}.guide{max-width:none;border:0;box-shadow:none}}
+.muted-row td{opacity:.55}
+/* 3.1 · Ρεπό, βάρδιες μετά τα μεσάνυχτα, managers στη Ρεσεψιόν, ειδοποιήσεις λογιστηρίου */
+.sc-bar.carry{opacity:.75;border-top:2px dashed rgba(255,255,255,.8)}
+.sc-note.off{background:#eef6ff;color:#1f4f8a;font-weight:700;text-align:center}
+.sc-mgr .sc-ch{box-shadow:inset 0 -3px 0 #c98a00;background:#fff8e6}
+.badge.b-mgr{background:#fff1cc;color:#7a5200;border:1px solid #e9c66a}
+.sc-ch em.badge{display:inline-block;font-style:normal;margin:2px 0}
+.legend i.lg-mgr{background:#fff1cc;border:1px solid #e9c66a}
+.list-item.unread{border-left:3px solid var(--gold,#d99e00);padding-left:10px}
+.list-item.on{background:#fff8e6}
+tr.total td{border-top:2px solid #d0d5db;background:#f7f8fa}
+tr.unread td:first-child{border-left:3px solid #d99e00}
+table.entry th.grp{text-align:center;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)} table.entry .old{background:#f6f9ff} table.entry th.grp.old{background:#eaf1ff;color:#1f4f8a}

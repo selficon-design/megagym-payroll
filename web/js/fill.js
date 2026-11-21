@@ -56,14 +56,15 @@ export async function bootFill(cfg, state) {
 
   // ─────────── Αίτημα ───────────
   function requestForm(d) {
-    const f = d.fields || {}, isLeave = d.category === "leave";
+    const f = d.fields || {}, isSick = d.category === "sick_leave", isLeave = d.category === "leave" || isSick;
     const tpl = d.templates || {};
     let edited = !!f.body, saveTimer;
     shell(`${d.employee.name} · ${d.employee.store}`, `
       <div class="eyebrow">${h(d.ref)} · ${h(d.category_label)}</div><h2 style="font-size:24px">${h(d.employee.name)}</h2>
       <p class="muted">Κωδικός ${h(d.employee.code)} · ${h(d.employee.store)} · ${h(d.employee.company)}</p>
       ${isLeave ? `
-        <div class="grid g2"><div><label>Είδος άδειας</label><select id="ff-lt"><option value="">— επιλέξτε —</option>${d.leave_types.map((x) => `<option value="${x.code}" ${x.code === f.leave_type ? "selected" : ""}>${h(x.label)}</option>`).join("")}</select></div>
+        <div class="grid g2">${isSick ? `<div><label>Είδος άδειας</label><input id="ff-lt" type="hidden" value="sick"><p style="margin:6px 0 0"><strong>Αναρρωτική Άδεια</strong></p></div>`
+          : `<div><label>Είδος άδειας</label><select id="ff-lt"><option value="">— επιλέξτε —</option>${d.leave_types.filter((x) => x.code !== "sick").map((x) => `<option value="${x.code}" ${x.code === f.leave_type ? "selected" : ""}>${h(x.label)}</option>`).join("")}</select></div>`}
           <div><label>Ημέρες άδειας που αιτείστε</label><input id="ff-days" inputmode="decimal" value="${h(f.days_requested ?? "")}"></div>
           <div><label>Από</label><input type="date" id="ff-s" value="${h(f.start_date || "")}"></div><div><label>Έως και</label><input type="date" id="ff-e" value="${h(f.end_date || "")}"></div></div>
         <p id="ff-cal" class="muted small" style="margin-top:8px"></p>

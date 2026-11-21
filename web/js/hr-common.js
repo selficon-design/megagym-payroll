@@ -1,8 +1,10 @@
 // Κοινά για αιτήματα, πρότυπα και αξιολογήσεις
 import { h, dmy } from "./util.js";
 
+// Σειρά εμφάνισης κατηγοριών (έκδοση 3.1): η «Αναρρωτική Άδεια» είναι κύρια κατηγορία, όχι υποκατηγορία της άδειας.
 export const CATEGORIES = {
-  leave_change: "Αλλαγή ημερομηνιών εγκεκριμένης άδειας", leave: "Άδεια / απουσία",
+  leave: "Άδεια / απουσία",
+  sick_leave: "Αναρρωτική Άδεια",
   shift_change: "Αλλαγή βάρδιας, ρεπό ή προγράμματος",
   raise: "Αύξηση αποδοχών",
   contract_change: "Αλλαγή ωρών ή σύμβασης",
@@ -10,13 +12,16 @@ export const CATEGORIES = {
   documents: "Βεβαιώσεις και έγγραφα",
   transfer: "Μετακίνηση καταστήματος ή αλλαγή θέσης",
   other_hr: "Λοιπό αίτημα προς HR",
+  leave_change: "Αλλαγή ημερομηνιών εγκεκριμένης άδειας",
   negative_review: "Αρνητική αξιολόγηση",
   incident: "Περιστατικό",
   warning_request: "Αίτημα έγγραφης προειδοποίησης",
 };
-export const EMPLOYEE_CATS = ["leave", "shift_change", "raise", "contract_change", "advance", "documents", "transfer", "other_hr"];
+export const EMPLOYEE_CATS = ["leave", "sick_leave", "shift_change", "raise", "contract_change", "advance", "documents", "transfer", "other_hr"];
 export const MANAGER_CATS = ["negative_review", "incident", "warning_request"];
-export const flowOf = (c) => (c === "leave" || c === "leave_change" ? "leave" : ["raise", "contract_change"].includes(c) ? "gm" : c === "warning_request" ? "warning" : ["negative_review", "incident"].includes(c) ? "report" : "generic");
+/** Άδεια με ημερομηνίες (κανονική/λοιπές ή αναρρωτική) */
+export const isLeaveCat = (c) => c === "leave" || c === "sick_leave";
+export const flowOf = (c) => (isLeaveCat(c) || c === "leave_change" ? "leave" : ["raise", "contract_change"].includes(c) ? "gm" : c === "warning_request" ? "warning" : ["negative_review", "incident"].includes(c) ? "report" : "generic");
 export const FLOW_NOTE = {
   leave: "Αποφασίζει το HR ή η Γενική Διευθύντρια (η ΓΔ δεν χρειάζεται να περιμένει το HR).",
   gm: "Εξέταση από HR και ΤΕΛΙΚΗ έγκριση από τη Γενική Διευθύντρια. Η έγκριση δεν αλλάζει αυτόματα αποδοχές ή σύμβαση.",

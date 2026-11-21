@@ -28,6 +28,10 @@ with sync_playwright() as p:
     for f, v in [("dr", "3"), ("lost", "7"), ("cb", "1"), ("trials_sent", "2"), ("enr_fitness", "2"), ("enr_body", "1"), ("enr_muscle", "1"), ("enr_from_trials", "0")]:
         pg.fill(f'{row} input[data-f={f}]', v); pg.dispatch_event(f'{row} input[data-f={f}]', "input")
     check(pg.inner_text(f'{row} [data-out=informed]') == "10" and pg.inner_text(f'{row} [data-out=conv]') == "40,0%" and pg.inner_text(f'{row} [data-out=excl]') == "20,0%", "αυτόματοι υπολογισμοί: ενημερώσεις 10, μετατροπή 40%, Exclusive 20%")
+    pg.click("#se-save"); pg.wait_for_timeout(400)
+    check("συμπληρώστε και τα «Παλιά μέλη»" in pg.inner_text("#se-msg"), "3.1: νέα καταχώριση Ρεσεψιόν συμπληρώνει και τα «Παλιά μέλη»")
+    for f in ["old_dr", "old_lost", "old_cb", "old_trials_sent", "old_enr_fitness", "old_enr_body", "old_enr_muscle", "old_enr_from_trials", "old_direct"]:
+        pg.fill(f'{row} input[data-f={f}]', "0"); pg.dispatch_event(f'{row} input[data-f={f}]', "input")
     xr = 'tr[data-key="T102|Exclusive"]'
     pg.fill(f'{xr} input[data-f=trials_done]', "-1"); pg.dispatch_event(f'{xr} input[data-f=trials_done]', "input")
     pg.click("#se-save"); pg.wait_for_timeout(400)

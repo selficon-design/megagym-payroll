@@ -26,7 +26,7 @@ create or replace function pg_temp.bal(c text, d date, k text) returns text lang
 create or replace function pg_temp.leave(c text, t text, s date, e date, n text default '1') returns uuid language plpgsql as $$
 declare v uuid;
 begin
-  v := (req_create(jsonb_build_object('category','leave','employee_code',c,'entry_mode','manager_record','leave_type',t,
+  v := (req_create(jsonb_build_object('category',case when t = 'sick' then 'sick_leave' else 'leave' end,'employee_code',c,'entry_mode','manager_record','leave_type',t,
         'start_date',s,'end_date',e,'days_requested',n,'body','Παρακαλώ να εγκρίνετε την άδεια του εργαζομένου.'))->>'id')::uuid;
   perform req_submit(v, 1);
   return v;

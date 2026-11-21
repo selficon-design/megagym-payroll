@@ -1,4 +1,4 @@
 // Έκδοση εφαρμογής: ένα σημείο. Ο έλεγχος tests/js/guide.test.mjs απαιτεί ο Οδηγός χρήσης (web/guide.md)
 // να γράφει την ίδια έκδοση, ώστε κάθε νέα έκδοση να δημοσιεύεται μαζί με ενημερωμένο οδηγό.
-export const APP_VERSION = "3.0";
-export const APP_VERSION_LABEL = "3.0 · Άδειες, πρόγραμμα, δικαιώματα";
+export const APP_VERSION = "3.1";
+export const APP_VERSION_LABEL = "3.1 · Εργασίες, αναφορές καταστημάτων, βελτίωση, στατιστικά";

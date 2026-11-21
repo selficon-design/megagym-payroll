@@ -6,8 +6,11 @@ import { enterFill } from "./fill-launch.js";
 import { keysTab, examplesTab, evalsTab } from "./views-keys.js";
 
 const view = () => $("#view");
-const LETTERS = ["Α", "Β", "Γ", "Δ", "Ε", "ΣΤ"];
-const COLS = ["Ειδικότητα", "Ενότητα", "Ερώτηση", "Τύπος απάντησης", ...LETTERS.map((l) => `Επιλογή ${l}`), "Σωστή απάντηση", "Βαθμοί", "Υποχρεωτική", "Σειρά εμφάνισης"];
+// Έως 12 επιλογές (Α..ΙΒ). Τα παλιά πρότυπα με 6 επιλογές (Α..ΣΤ) γίνονται ακόμη δεκτά.
+const LETTERS = ["Α", "Β", "Γ", "Δ", "Ε", "ΣΤ", "Ζ", "Η", "Θ", "Ι", "ΙΑ", "ΙΒ"];
+const colsFor = (n) => ["Ειδικότητα", "Ενότητα", "Ερώτηση", "Τύπος απάντησης", ...LETTERS.slice(0, n).map((l) => `Επιλογή ${l}`), "Σωστή απάντηση", "Βαθμοί", "Υποχρεωτική", "Σειρά εμφάνισης"];
+const COLS = colsFor(12);
+const tplRow = (spec, sec, text, type, opts, correct, pts, req, order) => [spec, sec, text, type, ...LETTERS.map((_, i) => opts[i] ?? ""), correct, pts, req, order];
 const QTYPE_GR = { single: "Μία επιλογή", multi: "Πολλές επιλογές", scale: "Κλίμακα", text: "Ελεύθερο κείμενο" };
 const Q_STATUS = { draft: ["Πρόχειρο", "b-missing"], active: ["Ενεργό", "b-signed"], closed: ["Κλειστό", "b-voided"] };
 const qBadge = (s) => `<span class="badge ${Q_STATUS[s][1]}">${Q_STATUS[s][0]}</span>`;
@@ -44,18 +47,20 @@ function downloadTemplate() {
   const specs = activeSpecialties();
   downloadXlsx("Πρότυπο_Ερωτηματολογίου.xlsx", {
     "Ερωτήσεις": [COLS,
-      [specs[0] || "Ρεσεψιόν", "Πωλήσεις", "Τι σημαίνει DR;", "Μία επιλογή", "Άμεση εγγραφή", "Δοκιμαστικό", "Χαμένη ενημέρωση", "", "", "", "Α", "1", "Ναι", "1"],
-      [specs[0] || "Ρεσεψιόν", "Πωλήσεις", "Ποια προγράμματα είναι Exclusive;", "Πολλές επιλογές", "MEGA BODY", "MEGA MUSCLE", "Fitness", "Pilates", "", "", "Α,Β", "2", "Ναι", "2"],
-      [specs[0] || "Ρεσεψιόν", "Αυτοαξιολόγηση", "Πόσο άνετα χειρίζεστε τις τηλεφωνικές ενημερώσεις;", "Κλίμακα", "1", "5", "Καθόλου", "Πολύ", "", "", "", "", "Ναι", "3"],
-      ["", "Γενικά", "Περιγράψτε μια δύσκολη συνομιλία με μέλος και πώς τη χειριστήκατε.", "Ελεύθερο κείμενο", "", "", "", "", "", "", "", "", "Όχι", "4"]],
+      tplRow(specs[0] || "Ρεσεψιόν", "Πωλήσεις", "Τι σημαίνει DR;", "Μία επιλογή", ["Άμεση εγγραφή", "Δοκιμαστικό", "Χαμένη ενημέρωση"], "Α", "1", "Ναι", "1"),
+      tplRow(specs[0] || "Ρεσεψιόν", "Πωλήσεις", "Ποια προγράμματα είναι Exclusive;", "Πολλές επιλογές", ["MEGA BODY", "MEGA MUSCLE", "Fitness", "Pilates"], "Α,Β", "2", "Ναι", "2"),
+      tplRow(specs[0] || "Ρεσεψιόν", "Αυτοαξιολόγηση", "Πόσο άνετα χειρίζεστε τις τηλεφωνικές ενημερώσεις;", "Κλίμακα", ["1", "5", "Καθόλου", "Πολύ"], "", "", "Ναι", "3"),
+      tplRow("", "Γενικά", "Περιγράψτε μια δύσκολη συνομιλία με μέλος και πώς τη χειριστήκατε.", "Ελεύθερο κείμενο", [], "", "", "Όχι", "4"),
+      tplRow("", "Αποχώρηση", "Ποιος ήταν ο κύριος λόγος αποχώρησης; (παράδειγμα με 12 επιλογές, π.χ. για Exit Interview)", "Μία επιλογή",
+        ["Αποδοχές", "Ωράριο", "Απόσταση", "Σχέσεις με συναδέλφους", "Σχέσεις με προϊστάμενο", "Εξέλιξη", "Σπουδές", "Υγεία", "Οικογενειακοί λόγοι", "Νέα θέση εργασίας", "Μετακόμιση", "Άλλο"], "", "", "Ναι", "5")],
     "Οδηγίες": [["Στήλη", "Τι γράφω"],
       ["Γενικά", "Κάθε γραμμή = μία ερώτηση. Μην αλλάζετε τα ονόματα των στηλών. Μην χρησιμοποιείτε τύπους (=…) ή μακροεντολές: δεν εκτελούνται και η γραμμή απορρίπτεται."],
       ["Ειδικότητα", `Μία από: ${specs.join(", ")}. Κενό = η ερώτηση εμφανίζεται σε όλες τις ειδικότητες του ερωτηματολογίου.`],
       ["Ενότητα", "Ομάδα ερωτήσεων (π.χ. Πωλήσεις). Κενό = «Γενικά». Η βαθμολογία δείχνεται και ανά ενότητα."],
       ["Τύπος απάντησης", "Μία επιλογή · Πολλές επιλογές · Κλίμακα · Ελεύθερο κείμενο"],
-      ["Επιλογή Α – ΣΤ", "Για «Μία/Πολλές επιλογές»: τα κείμενα των επιλογών, συνεχόμενα από την Α (τουλάχιστον Α και Β)."],
+      ["Επιλογή Α – ΙΒ", "Για «Μία/Πολλές επιλογές»: έως 12 επιλογές (Α, Β, Γ, Δ, Ε, ΣΤ, Ζ, Η, Θ, Ι, ΙΑ, ΙΒ), συνεχόμενες από την Α (τουλάχιστον Α και Β). Κενές στήλες στο τέλος αγνοούνται. Γίνονται δεκτά και παλιά αρχεία με 6 επιλογές (Α–ΣΤ)."],
       ["Κλίμακα", "Επιλογή Α = ελάχιστη τιμή (π.χ. 1), Επιλογή Β = μέγιστη (π.χ. 5, έως 10 βήματα). Προαιρετικά: Επιλογή Γ = ετικέτα ελάχιστης, Επιλογή Δ = ετικέτα μέγιστης."],
-      ["Σωστή απάντηση", "Μία επιλογή: ένα γράμμα (π.χ. Α). Πολλές επιλογές: γράμματα με κόμμα (π.χ. Α,Γ). Κλίμακα: κενό (αυτοαξιολόγηση, χωρίς σωστό/λάθος) ή ΑΝΑΛΟΓΙΚΑ (βαθμός ανάλογος της τιμής). Ελεύθερο κείμενο: κενό."],
+      ["Σωστή απάντηση", "Μία επιλογή: ένα γράμμα (π.χ. Α ή ΙΒ). Πολλές επιλογές: γράμματα με κόμμα (π.χ. Α,Γ,ΙΑ). Κλίμακα: κενό (αυτοαξιολόγηση, χωρίς σωστό/λάθος) ή ΑΝΑΛΟΓΙΚΑ (βαθμός ανάλογος της τιμής). Ελεύθερο κείμενο: κενό."],
       ["Βαθμοί", "Μόνο όπου υπάρχει κανόνας βαθμολόγησης. Ελεύθερο κείμενο με βαθμούς → χειροκίνητη βαθμολόγηση από ΓΔ/HR. Κλίμακα με βαθμούς → χρειάζεται ΑΝΑΛΟΓΙΚΑ."],
       ["Πολλές σωστές", "Ο κανόνας (όλα-ή-τίποτα ή μερική βαθμολογία) ορίζεται στην εφαρμογή πριν από την ενεργοποίηση."],
       ["Υποχρεωτική", "Ναι ή Όχι"],
@@ -73,13 +78,17 @@ async function readQuestions(file) {
   const range = X.utils.decode_range(ws["!ref"] || "A1:A1");
   const cell = (r, c) => ws[X.utils.encode_cell({ r, c })];
   const head = Array.from({ length: COLS.length }, (_, c) => String(cell(range.s.r, c)?.w ?? cell(range.s.r, c)?.v ?? "").trim());
-  const missing = COLS.filter((c, i) => norm(head[i]) !== norm(c));
-  if (missing.length) throw new Error(`Οι στήλες δεν ταιριάζουν με το πρότυπο (γραμμή 1). Λείπει ή είναι σε λάθος θέση: ${missing.join(", ")}.`);
+  // Νέο πρότυπο (12 επιλογές) ή παλιό (6 επιλογές)
+  const n = norm(head[10]) === norm("Σωστή απάντηση") ? 6 : 12;
+  const cols = colsFor(n);
+  const missing = cols.filter((c, i) => norm(head[i]) !== norm(c));
+  if (missing.length) throw new Error(`Οι στήλες δεν ταιριάζουν με το πρότυπο (γραμμή 1). Λείπει ή είναι σε λάθος θέση: ${missing.join(", ")}. Κατεβάστε το νέο πρότυπο (έως 12 επιλογές).`);
   const rows = [], formulaRows = [];
   for (let r = range.s.r + 1; r <= range.e.r; r++) {
-    const vals = Array.from({ length: COLS.length }, (_, c) => { const x = cell(r, c); if (x?.f) formulaRows.push(r + 1); return String(x?.w ?? x?.v ?? "").trim(); });
+    const vals = Array.from({ length: cols.length }, (_, c) => { const x = cell(r, c); if (x?.f) formulaRows.push(r + 1); return String(x?.w ?? x?.v ?? "").trim(); });
     if (!vals.some(Boolean)) continue;
-    rows.push({ row: r + 1, specialty: vals[0], section: vals[1], text: vals[2], type: vals[3], options: vals.slice(4, 10), correct: vals[10], points: vals[11], required: vals[12], order: vals[13] });
+    const o = 4 + n;
+    rows.push({ row: r + 1, specialty: vals[0], section: vals[1], text: vals[2], type: vals[3], options: [...vals.slice(4, o), ...Array(12 - n).fill("")], correct: vals[o], points: vals[o + 1], required: vals[o + 2], order: vals[o + 3] });
   }
   return { rows, formulaRows: [...new Set(formulaRows)] };
 }
@@ -174,12 +183,20 @@ const questionRow = (x) => `<tr><td class="num small">${x.row_no}</td><td class=
   <td>${h(x.text)}${x.qtype === "scale" ? `<span class="sub">Κλίμακα ${x.scale_min}–${x.scale_max}${x.scale_min_label ? ` (${h(x.scale_min_label)} → ${h(x.scale_max_label || "")})` : ""}</span>` : x.options?.length ? `<span class="sub">${x.options.map((o) => `${o.key}. ${h(o.label)}`).join(" · ")}</span>` : ""}</td>
   <td class="small">${QTYPE_GR[x.qtype]}</td><td class="small">${x.correct?.length ? h(x.correct.join(",")) : x.scale_rule === "linear" ? "ΑΝΑΛΟΓΙΚΑ" : "—"}</td><td class="r num">${num(x.points)}</td><td class="small">${x.required ? "Ναι" : "Όχι"}</td></tr>`;
 
+// Ερώτηση της βάσης → γραμμή του προτύπου (για «Επεξεργασία ερωτήσεων» χωρίς Excel)
+const questionToRow = (x) => ({
+  row: x.row_no, specialty: x.specialty || "", section: x.section === "Γενικά" ? "" : x.section || "", text: x.text, type: QTYPE_GR[x.qtype],
+  options: x.qtype === "scale" ? [String(x.scale_min ?? ""), String(x.scale_max ?? ""), x.scale_min_label || "", x.scale_max_label || ""] : (x.options || []).map((o) => o.label),
+  correct: x.qtype === "scale" ? (x.scale_rule === "linear" ? "ΑΝΑΛΟΓΙΚΑ" : "") : (x.correct || []).join(","),
+  points: x.points === null || x.points === undefined ? "" : String(x.points).replace(".", ","), required: x.required ? "Ναι" : "Όχι", order: x.sort === null || x.sort === undefined ? "" : String(x.sort),
+});
+
 async function questionsTab(q, body, admin, reload) {
   const latest = q.versions[0];
   const qs = latest ? await S.api.questions(latest.id) : [];
   body.innerHTML = `<div class="card">
     <div class="card-head"><h3>Έκδοση ${latest?.version ?? "—"} · ${latest?.status === "draft" ? "πρόχειρη" : latest?.status === "published" ? "ενεργή" : "αποσυρμένη"}${latest?.source_filename ? ` <span class="muted small">από ${h(latest.source_filename)}</span>` : ""}</h3>
-      ${admin ? `<div class="row-actions"><button class="btn" id="qq-tpl">⇩ Πρότυπο</button><label class="btn primary" style="margin:0">⇧ Ανέβασμα Excel<input type="file" id="qq-file" accept=".xlsx,.xls" hidden></label></div>` : ""}</div>
+      ${admin ? `<div class="row-actions">${qs.length ? `<button class="btn" id="qq-edit">Επεξεργασία ερωτήσεων</button>` : ""}<button class="btn" id="qq-tpl">⇩ Πρότυπο</button><label class="btn primary" style="margin:0">⇧ Ανέβασμα Excel<input type="file" id="qq-file" accept=".xlsx,.xls" hidden></label></div>` : ""}</div>
     ${q.status === "active" && admin ? `<div class="note" style="margin-bottom:12px">Οποιαδήποτε αλλαγή ερωτήσεων, σωστών απαντήσεων ή βαθμών δημιουργεί <strong>νέα έκδοση</strong>· οι προηγούμενες υποβολές δεν αλλάζουν.</div>` : ""}
     ${qs.length ? `<div class="table-wrap"><table><thead><tr><th>Γρ.</th><th>Ειδικότητα / Ενότητα</th><th>Ερώτηση</th><th>Τύπος</th><th>Σωστή</th><th class="r">Βαθμοί</th><th>Υποχρ.</th></tr></thead><tbody>${qs.map(questionRow).join("")}</tbody></table></div>`
       : `<div class="empty">Δεν υπάρχουν ερωτήσεις. ${admin ? "Κατεβάστε το πρότυπο, συμπληρώστε το και ανεβάστε το." : ""}</div>`}
@@ -187,6 +204,7 @@ async function questionsTab(q, body, admin, reload) {
   </div>`;
   if (!admin) return;
   $("#qq-tpl").onclick = downloadTemplate;
+  $("#qq-edit") && ($("#qq-edit").onclick = () => importPreview(q, qs.map(questionToRow), [], "Επεξεργασία στην εφαρμογή", reload, { edit: true }));
   $("#qq-file").onchange = async (e) => {
     const f = e.target.files[0]; e.target.value = ""; if (!f) return;
     try { const { rows, formulaRows } = await readQuestions(f); importPreview(q, rows, formulaRows, f.name, reload); } catch (err) { toast(err.message, true); }
@@ -194,26 +212,38 @@ async function questionsTab(q, body, admin, reload) {
 }
 
 /** Προεπισκόπηση: έλεγχος από τον ΙΔΙΟ κανόνα του server, διορθώσεις στη θέση τους, αποθήκευση ως πρόχειρο. */
-function importPreview(q, rows, formulaRows, filename, reload) {
+function importPreview(q, rows, formulaRows, filename, reload, { edit = false } = {}) {
   const st = { rows, errors: [] };
   const cols = [["specialty", "Ειδικότητα"], ["section", "Ενότητα"], ["text", "Ερώτηση"], ["type", "Τύπος"], ...LETTERS.map((l, i) => [`o${i}`, l]), ["correct", "Σωστή"], ["points", "Βαθμοί"], ["required", "Υποχρ."], ["order", "Σειρά"]];
-  const get = (r, k) => (k[0] === "o" && k.length === 2 ? r.options[Number(k[1])] : r[k]);
-  const set = (r, k, v) => { if (k[0] === "o" && k.length === 2) r.options[Number(k[1])] = v; else r[k] = v; };
-  openDialog(`<div class="dlg-head"><div><div class="eyebrow">${h(filename)}</div><h2>Προεπισκόπηση ερωτήσεων</h2></div><button class="icon-btn" data-close>✕</button></div>
-    <div id="ip-sum"></div><div class="table-wrap" style="max-height:55vh;margin-top:12px"><table class="edit"><thead><tr><th>Γρ.</th>${cols.map(([, l]) => `<th>${l}</th>`).join("")}<th></th></tr></thead><tbody id="ip-rows"></tbody></table></div>
-    <div class="dlg-foot"><button class="btn" data-close>Άκυρο</button><button class="btn" id="ip-check">Νέος έλεγχος</button><button class="btn primary" id="ip-save" disabled>Αποθήκευση ως πρόχειρο</button></div>`, {
+  const isOpt = (k) => /^o\d+$/.test(k);
+  const get = (r, k) => (isOpt(k) ? r.options[Number(k.slice(1))] : r[k]);
+  const set = (r, k, v) => { if (isOpt(k)) r.options[Number(k.slice(1))] = v; else r[k] = v; };
+  st.rows.forEach((r) => { r.options = LETTERS.map((_, i) => r.options?.[i] ?? ""); });
+  openDialog(`<div class="dlg-head"><div><div class="eyebrow">${h(filename)}</div><h2>${edit ? "Επεξεργασία ερωτήσεων" : "Προεπισκόπηση ερωτήσεων"}</h2></div><button class="icon-btn" data-close>✕</button></div>
+    ${edit ? `<p class="muted small">Προσθέστε, αλλάξτε ή αφαιρέστε ερωτήσεις και επιλογές (έως 12: Α–ΙΒ). Η αποθήκευση γίνεται σε <strong>νέα πρόχειρη έκδοση</strong>· οι απαντήσεις που έχουν ήδη δοθεί μένουν συνδεδεμένες με την έκδοση στην οποία απαντήθηκαν και δεν αλλάζει το νόημά τους.</p>` : ""}
+    <div id="ip-sum"></div><div class="table-wrap" style="max-height:55vh;margin-top:12px"><table class="edit"><thead><tr><th>Γρ.</th>${cols.map(([, l]) => `<th>${l}</th>`).join("")}<th></th><th></th></tr></thead><tbody id="ip-rows"></tbody></table></div>
+    <div class="dlg-foot"><button class="btn" id="ip-add">+ Ερώτηση</button><span style="flex:1"></span><button class="btn" data-close>Άκυρο</button><button class="btn" id="ip-check">Νέος έλεγχος</button><button class="btn primary" id="ip-save" disabled>Αποθήκευση ως πρόχειρο</button></div>`, {
     wide: true,
     async onOpen() {
       const draw = () => {
         const err = Object.fromEntries(st.errors.map((e) => [e.row, e.msg]));
         $("#ip-rows").innerHTML = st.rows.map((r, i) => `<tr class="${err[r.row] ? "bad" : ""}"><td class="num">${r.row}</td>${cols.map(([k]) => `<td><input data-i="${i}" data-k="${k}" value="${h(get(r, k) ?? "")}" class="${k === "text" ? "wide" : ""}"></td>`).join("")}
-          <td class="small">${err[r.row] ? `<span class="err-txt">${h(err[r.row])}</span>` : `<span class="badge b-signed">OK</span>`}</td></tr>`).join("");
+          <td class="small">${err[r.row] ? `<span class="err-txt">${h(err[r.row])}</span>` : r._new ? `<span class="badge b-missing">νέα</span>` : `<span class="badge b-signed">OK</span>`}</td>
+          <td><button class="icon-btn" data-del="${i}" title="Αφαίρεση ερώτησης" aria-label="Αφαίρεση ερώτησης">✕</button></td></tr>`).join("");
+        $$("#ip-rows [data-del]").forEach((b) => (b.onclick = () => { st.rows.splice(Number(b.dataset.del), 1); st.errors = []; $("#ip-save").disabled = true; draw(); }));
         $("#ip-sum").innerHTML = st.errors.length ? `<div class="note bad">Βρέθηκαν ${st.errors.length} λάθη. Διορθώστε τα εδώ ή στο αρχείο και πατήστε «Νέος έλεγχος».<ul style="margin:6px 0 0 18px">${st.errors.slice(0, 12).map((e) => `<li>${e.row ? `Γραμμή ${e.row}: ` : ""}${h(e.msg)}</li>`).join("")}</ul></div>`
           : `<div class="note">Όλες οι ${st.rows.length} ερωτήσεις είναι έγκυρες. Θα αποθηκευτούν ως <strong>πρόχειρο</strong>· η ενεργοποίηση γίνεται χωριστά.</div>`;
         $$("#ip-rows input").forEach((inp) => (inp.oninput = () => { set(st.rows[inp.dataset.i], inp.dataset.k, inp.value); $("#ip-save").disabled = true; }));
-        $("#ip-save").disabled = st.errors.length > 0;
+        $("#ip-save").disabled = st.errors.length > 0 || !st.rows.length || st.rows.some((r) => r._new);
+      };
+      $("#ip-add").onclick = () => {
+        const next = Math.max(1, ...st.rows.map((r) => r.row)) + 1;
+        st.rows.push({ row: next, specialty: "", section: "", text: "", type: "Μία επιλογή", options: LETTERS.map(() => ""), correct: "", points: "", required: "Ναι", order: "", _new: true });
+        $("#ip-save").disabled = true; draw();
+        $$(`#ip-rows input[data-i="${st.rows.length - 1}"][data-k="text"]`)[0]?.focus();
       };
       const check = async () => {
+        st.rows.forEach((r) => delete r._new);
         const res = await S.api.qParse(st.rows);
         st.errors = [...res.errors, ...formulaRows.filter((r) => st.rows.some((x) => x.row === r)).map((r) => ({ row: r, msg: "Η γραμμή περιέχει τύπο Excel (=…). Οι τύποι δεν εκτελούνται· γράψτε απλή τιμή." }))];
         draw();

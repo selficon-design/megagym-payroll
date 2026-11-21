@@ -10,7 +10,9 @@ import { statsEntry, statsReport } from "./views-stats.js";
 import { assessments, assessmentView, assessRun, assessReports, exitReports } from "./views-assess.js";
 import { templates } from "./views-admin.js";
 import { leaves, answers, tasks, refreshAnswers } from "./views-leave.js";
-import { schedule } from "./views-schedule.js";
+import { schedule, scheduleAlerts, refreshSchedAlerts } from "./views-schedule.js";
+import { storeReports } from "./views-reports.js";
+import { improvement } from "./views-improvement.js";
 import { permissionsView } from "./views-perms.js";
 import { guide } from "./views-guide.js";
 import { afterFillReturn } from "./fill-launch.js";
@@ -25,9 +27,12 @@ const ROUTES = [
   { id: "employees", title: "Εργαζόμενοι", ico: "♙", group: "Προσωπικό", render: employees, show: can.employees },
   { id: "answers", title: "Απαντήσεις", ico: "✆", group: "Προσωπικό", render: answers, show: () => can.requests() && live(), badge: true },
   { id: "requests", title: "Αιτήματα & Αναφορές", ico: "✉", group: "Προσωπικό", render: requests, show: () => can.requests() && live() },
-  { id: "tasks", title: "Εργασίες μου", ico: "☐", group: "Προσωπικό", render: tasks, show: () => ["accounting", "hr"].includes(role()) && live() },
+  { id: "tasks", title: "Οι εργασίες μου", ico: "☐", group: "Προσωπικό", render: tasks, show: () => ["accounting", "hr", "manager", "owner"].includes(role()) && live() },
+  { id: "improvement", title: "Βελτίωση & συνεργασία", ico: "↗", group: "Προσωπικό", render: improvement, show: () => P("improvement.view") && live() },
+  { id: "store-reports", title: "Αναφορές καταστημάτων", ico: "✎", group: "Προσωπικό", render: storeReports, show: () => (P("store_reports.create") || P("store_reports.respond") || P("store_reports.view_all")) && live(), notices: true },
   { id: "leaves", title: "Άδειες", ico: "☀", group: "Προσωπικό", render: leaves, show: () => can.leave() && live() },
-  { id: "schedule", title: "Πρόγραμμα", ico: "▥", group: "Προσωπικό", render: schedule, show: () => can.schedule() && live() },
+  { id: "schedule", title: "Πρόγραμμα", ico: "▥", group: "Προσωπικό", render: schedule, show: () => (can.schedule() || P("schedule.night_hours")) && live() },
+  { id: "schedule-alerts", title: "Αλλαγές προγράμματος", ico: "⚑", group: "Προσωπικό", render: scheduleAlerts, show: () => P("schedule.alerts") && live(), alerts: true },
   { id: "stats-entry", title: "Ημερήσια στατιστικά", ico: "▦", group: "Προσωπικό", render: statsEntry, show: () => can.statsEntry() && live() },
   { id: "stats-report", title: "Αναφορές στατιστικών", ico: "↗", group: "Προσωπικό", render: statsReport, show: () => can.statsReports() && live() },
   { id: "assessments", title: "Αξιολογήσεις", ico: "☑", group: "Προσωπικό", render: assessments, show: () => can.assessResults() && live() },
@@ -56,13 +61,14 @@ function parseHash() {
   return { id: path || "overview", params: new URLSearchParams(qs || "") };
 }
 
-let answersCount = 0;
+let answersCount = 0, alertsCount = 0, noticesCount = 0;
 function drawNav(openCount) {
   let html = "", group = "";
   for (const r of ROUTES.filter((r) => r.show() && !r.hidden)) {
     if (r.group !== group) { group = r.group; html += `<div class="nav-group">${group}</div>`; }
-    const n = r.count ? openCount : r.badge ? answersCount : 0;
-    html += `<a href="#/${r.id}" data-id="${r.id}"><span class="ico">${r.ico}</span>${r.title}${n ? `<span class="count ${r.badge ? "hot" : ""}" title="${r.badge ? "Αδιάβαστες ενημερώσεις" : ""}">${n}</span>` : ""}</a>`;
+    const n = r.count ? openCount : r.badge ? answersCount : r.alerts ? alertsCount : r.notices ? noticesCount : 0;
+    const hot = r.badge || r.alerts || r.notices;
+    html += `<a href="#/${r.id}" data-id="${r.id}"><span class="ico">${r.ico}</span>${r.title}${n ? `<span class="count ${hot ? "hot" : ""}" title="${hot ? "Αδιάβαστες ενημερώσεις" : ""}">${n}</span>` : ""}</a>`;
   }
   $("#nav").innerHTML = html;
   markActive();
@@ -74,6 +80,8 @@ function markActive() {
 }
 async function refreshCount() {
   answersCount = await refreshAnswers().catch(() => 0);
+  alertsCount = P("schedule.alerts") && live() ? await refreshSchedAlerts().catch(() => 0) : 0;
+  noticesCount = (P("store_reports.create") || P("store_reports.respond") || P("store_reports.view_all")) && live() ? await S.api.noticeCount().catch(() => 0) : 0;
   if (!can.payroll()) return drawNav(0);
   try { const rows = await getStatus(); drawNav(rows.filter((r) => r.status !== "signed").length); } catch { drawNav(0); }
 }

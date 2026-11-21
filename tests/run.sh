@@ -30,4 +30,8 @@ for t in "$D"/[1-9]*.sql; do
   for f in "${MIGS[@]}"; do $P -d mg_test -f "$f" >/dev/null; done
   run_file "$t"
 done
+# 3. Ταυτόχρονη δημιουργία εργαζομένων (αυτόματοι κωδικοί)
+fresh
+for f in "${MIGS[@]}"; do $P -d mg_test -f "$f" >/dev/null; done
+"$D/88_concurrent_codes.sh" mg_test
 echo "✓ ΟΛΑ ΤΑ TESTS ΠΕΡΑΣΑΝ"

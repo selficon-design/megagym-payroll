@@ -70,7 +70,7 @@ select pg_temp.expect_fail(format($$select req_decide(%L,'approve','{"message":"
 -- Η ΓΔ αναθεωρεί: η προηγούμενη απόφαση μένει στο ιστορικό
 select pg_temp.as_user('owner@x.gr');
 select pg_temp.expect_fail(format($$select req_decide(%L,'approve','{"message":"Εγκρίθηκε."}',%s)$$, :'leave1', pg_temp.ver(:'leave1') - 1), 'ταυτόχρονη αντικρουόμενη απόφαση (παλιά έκδοση)');
-select req_decide(:'leave1','approve','{"message":"Το αίτημά σας για κανονική άδεια εγκρίθηκε από 01/12/2026 έως και 03/12/2026, συνολικά 3 ημέρες.","approved_start":"2026-12-01","approved_end":"2026-12-03","approved_days":"3"}', pg_temp.ver(:'leave1'));
+select req_decide(:'leave1','approve','{"message":"Το αίτημά σας για κανονική άδεια εγκρίθηκε από 01/12/2026 έως και 03/12/2026, συνολικά 3 ημέρες.","approved_start":"2026-12-01","approved_end":"2026-12-03","approved_days":"3","diff_reason":"Εγκρίνονται 3 ημέρες λόγω κάλυψης προγράμματος"}', pg_temp.ver(:'leave1'));
 select pg_temp.eq((select count(*) from hr_decisions where request_id = :'leave1'), 2::bigint, 'αναθεώρηση: και οι δύο αποφάσεις στο ιστορικό');
 select pg_temp.eq((select outcome||'|'||is_revision||'|'||approved_days from hr_decisions where request_id = :'leave1' and superseded_at is null), 'approve|true|3.0', 'ισχύουσα απόφαση: έγκριση 3 ημερών (αναθεώρηση)');
 select pg_temp.eq((select outcome from hr_decisions where request_id = :'leave1' and superseded_at is not null), 'reject', 'η απόρριψη διατηρείται ως προηγούμενη απόφαση');
@@ -93,7 +93,7 @@ select pg_temp.expect_fail(format($$select req_decide(%L,'reject','{"message":"x
 
 -- Λόγοι απόρριψης ανά είδος άδειας / διευκρινίσεις αντί για αυτόματη απόρριψη
 select pg_temp.as_user('glyfada@x.gr');
-select req_create('{"category":"leave","employee_code":"E2","entry_mode":"manager_record","leave_type":"sick","start_date":"2026-11-02","end_date":"2026-11-03","days_requested":"2","body":"Παρακαλώ να εγκρίνετε άδεια ασθενείας."}') ->> 'id' as sick \gset
+select req_create('{"category":"sick_leave","employee_code":"E2","entry_mode":"manager_record","start_date":"2026-11-02","end_date":"2026-11-03","days_requested":"2","body":"Παρακαλώ να εγκρίνετε άδεια ασθενείας."}') ->> 'id' as sick \gset
 select req_submit(:'sick', 1);
 select pg_temp.as_user('hr@x.gr');
 select pg_temp.expect_fail(format($$select req_decide(%L,'reject','{"message":"Δεν εγκρίθηκε το αίτημα.","reason_code":"ops_needs","reason_text":"Πολύ φόρτο εργασίας"}',%s)$$, :'sick', pg_temp.ver(:'sick')), 'άδεια ασθενείας: δεν απορρίπτεται για επιχειρησιακές ανάγκες');

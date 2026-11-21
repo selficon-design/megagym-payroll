@@ -16,11 +16,17 @@ export const FIELD_LABEL = {
   enr_muscle: "Εγγραφές MEGA MUSCLE",
   enr_pilates: "Εγγραφές Pilates",
   enr_from_trials: "Εγγραφές από δοκιμαστικά",
+  old_direct: "Παλιά μέλη — Άμεσο",
 };
+// Ρεσεψιόν · «Παλιά μέλη»: ακριβώς τα ίδια πεδία με τα «Νέα μέλη» (πρόθεμα old_) + «Παλιά μέλη — Άμεσο»
+export const OLD_FIELDS = ["old_dr", "old_lost", "old_cb", "old_trials_sent", "old_enr_fitness", "old_enr_body", "old_enr_muscle", "old_enr_from_trials", "old_direct"];
+for (const f of OLD_FIELDS.slice(0, 8)) FIELD_LABEL[f] = "Παλιά μέλη · " + FIELD_LABEL[f.slice(4)];
 export const FIELD_SHORT = {
   dr: "DR", lost: "LOST", cb: "CB", trials_sent: "Δοκ. έστειλε", trials_attended: "Δοκ. προσήλθαν",
   trials_enrolled: "Δοκ. γράφτηκαν", trials_done: "Δοκ. εκτέλεσε", enr_fitness: "Fitness", enr_body: "BODY",
   enr_muscle: "MUSCLE", enr_pilates: "Pilates", enr_from_trials: "Εγγρ. από δοκ.",
+  old_dr: "DR", old_lost: "LOST", old_cb: "CB", old_trials_sent: "Δοκ. έστειλε", old_enr_fitness: "Fitness", old_enr_body: "BODY",
+  old_enr_muscle: "MUSCLE", old_enr_from_trials: "Εγγρ. από δοκ.", old_direct: "Άμεσο",
 };
 
 const pct = (n, d) => (d > 0 ? (n / d) * 100 : null);
@@ -31,6 +37,18 @@ export const KINDS = {
     fields: ["dr", "lost", "cb", "trials_sent", "enr_fitness", "enr_body", "enr_muscle", "enr_from_trials"],
     metrics: [
       { key: "conv", label: "Συνολική μετατροπή", formula: "(DR + CB) ÷ Ενημερώσεις", f: (t) => pct(t.dr + t.cb, t.informed) },
+      { key: "excl", label: "Exclusive", formula: "(BODY + MUSCLE) ÷ Ενημερώσεις", f: (t) => pct(t.enr_body + t.enr_muscle, t.informed) },
+      { key: "fit", label: "Fitness", formula: "FITNESS ÷ Ενημερώσεις", f: (t) => pct(t.enr_fitness, t.informed) },
+      { key: "body", label: "BODY", formula: "BODY ÷ Ενημερώσεις", f: (t) => pct(t.enr_body, t.informed) },
+      { key: "muscle", label: "MUSCLE", formula: "MUSCLE ÷ Ενημερώσεις", f: (t) => pct(t.enr_muscle, t.informed) },
+    ],
+  },
+  // Εικονικό είδος για τις αναφορές: οι γραμμές Ρεσεψιόν με διάκριση νέων/παλιών, με τα πεδία old_* στη θέση των βασικών
+  reception_old: {
+    label: "Ρεσεψιόν — Παλιά μέλη",
+    fields: ["dr", "lost", "cb", "trials_sent", "enr_fitness", "enr_body", "enr_muscle", "enr_from_trials"],
+    metrics: [
+      { key: "conv", label: "Συνολική μετατροπή (ανανεώσεις)", formula: "(DR + CB) ÷ Ενημερώσεις", f: (t) => pct(t.dr + t.cb, t.informed) },
       { key: "excl", label: "Exclusive", formula: "(BODY + MUSCLE) ÷ Ενημερώσεις", f: (t) => pct(t.enr_body + t.enr_muscle, t.informed) },
       { key: "fit", label: "Fitness", formula: "FITNESS ÷ Ενημερώσεις", f: (t) => pct(t.enr_fitness, t.informed) },
       { key: "body", label: "BODY", formula: "BODY ÷ Ενημερώσεις", f: (t) => pct(t.enr_body, t.informed) },
@@ -54,6 +72,13 @@ export const KINDS = {
     ],
   },
 };
+
+/** Γραμμές Ρεσεψιόν → «Παλιά μέλη» (μόνο όσες έχουν διάκριση· οι παλιές χωρίς διάκριση ΔΕΝ μετρούν ως παλιά μέλη) */
+export function oldMemberRows(rows) {
+  return rows.filter((r) => r.kind === "reception" && r.old_dr !== null && r.old_dr !== undefined).map((r) => ({
+    ...r, kind: "reception_old", dr: r.old_dr, lost: r.old_lost, cb: r.old_cb, trials_sent: r.old_trials_sent, enr_fitness: r.old_enr_fitness,
+    enr_body: r.old_enr_body, enr_muscle: r.old_enr_muscle, enr_from_trials: r.old_enr_from_trials, informed: r.old_dr + r.old_lost }));
+}
 
 /** Έλεγχος τιμής πεδίου πλήθους: μόνο μη αρνητικοί ακέραιοι. "" = δεν συμπληρώθηκε. */
 export function parseCount(v) {
@@ -91,7 +116,7 @@ export function fmtPct(v) {
 /** Προειδοποιήσεις προς έλεγχο — ποτέ αυτόματη απόρριψη. */
 export function warnings(t, kind) {
   const w = [];
-  if (kind === "reception") {
+  if (kind === "reception" || kind === "reception_old") {
     const prog = t.enr_fitness + t.enr_body + t.enr_muscle;
     if (prog !== t.dr + t.cb) w.push(`Η ανάλυση ανά πρόγραμμα (${prog}) δεν συμφωνεί με τις συνολικές εγγραφές DR + CB (${t.dr + t.cb}).`);
   }
