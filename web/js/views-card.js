@@ -131,7 +131,7 @@ async function leave(e, body, params) {
         ${kpi("Ληφθείσες", num2(B.taken))}
         ${kpi("Εγκεκριμένες μελλοντικές", num2(B.future_approved))}
         ${kpi("Υπόλοιπο βάσει αναλογίας", num2(B.balance), Number(B.adjustments) ? `περιλαμβάνει διορθώσεις ${num2(B.adjustments)}` : "", Number(B.balance) < 0 ? "bad" : "ok")}
-        ${kpi("Υπόλοιπο " + B.prev_year, num2(B.prev_balance), B.prev_state === "usable" ? `διαθέσιμο έως ${dmy(B.prev_deadline)}` : B.prev_state === "to_settle" ? `<span class="badge b-pending">Προς εκκαθάριση από το λογιστήριο</span>` : "", B.prev_state === "to_settle" ? "warn" : "")}
+        ${kpi("Υπόλοιπο " + B.prev_year, num2(B.prev_balance), B.prev_state === "settled_outside" ? `τακτοποιημένο εκτός εφαρμογής (απόφαση ΓΔ — έτη έως ${B.settled_through})` : B.prev_state === "usable" ? `διαθέσιμο έως ${dmy(B.prev_deadline)}` : B.prev_state === "to_settle" ? `<span class="badge b-pending">Προς εκκαθάριση από το λογιστήριο</span>` : "", B.prev_state === "to_settle" ? "warn" : "")}
       </div>
       <p class="muted small" style="margin-top:8px">Η αναλογία είναι εσωτερικός δείκτης προγραμματισμού (δύο δεκαδικά, χωρίς μηνιαία στρογγυλοποίηση) και δεν αποτελεί από μόνη της νομική κρίση ή λόγο απόρριψης. Οι ημέρες χρέωσης προκύπτουν από το πρόγραμμα/σύστημα εργασίας του εργαζομένου, χωρίς αργίες.</p>
       <div class="row-actions" style="margin-top:10px">${can.leaveAdjust() ? `<button class="btn sm" id="lv-adj">Διόρθωση υπολοίπου</button><button class="btn sm" id="lv-base">Ετήσια βάση</button>` : ""}${can.leaveSettle() && B.prev_state === "to_settle" ? `<button class="btn sm primary" id="lv-pay">Πληρωμή εκκαθάρισης ${B.prev_year}</button>` : ""}</div>
@@ -167,7 +167,7 @@ async function leave(e, body, params) {
   $("#lv-pay") && ($("#lv-pay").onclick = () => settleDialog({ employee_code: e.code, employee_name: `${e.first} ${e.last}`, leave_year: B.prev_year, outstanding: B.prev_balance }, reload));
   $("#lv-adj") && ($("#lv-adj").onclick = () => openDialog(`<div class="dlg-head"><div><div class="eyebrow">${h(e.first)} ${h(e.last)}</div><h2>Διόρθωση υπολοίπου</h2></div><button class="icon-btn" data-close>✕</button></div>
       <p class="muted small">Καταγράφονται αιτιολογία, προηγούμενη και νέα τιμή, χρήστης και χρόνος. Η διόρθωση προστίθεται στο ιστορικό κινήσεων — δεν αντικαθιστά παλιές εγγραφές.</p>
-      <div class="grid g3"><div><label>Έτος άδειας</label><select id="ad-y"><option>${B.year}</option><option>${B.prev_year}</option><option>${B.prev_year - 1}</option></select></div>
+      <div class="grid g3"><div><label>Έτος άδειας</label><select id="ad-y">${[B.year, B.prev_year, B.prev_year - 1].filter((y) => !(B.settled_through && y <= B.settled_through)).map((y) => `<option>${y}</option>`).join("")}</select></div>
         <div><label>Νέο υπόλοιπο</label><input id="ad-v" inputmode="decimal"></div><div><label>Ημερομηνία αναφοράς</label><input type="date" id="ad-d" value="${asOf}"></div></div>
       <p class="muted small" id="ad-cur">Τρέχον υπόλοιπο ${B.year} (μετά τις εγκεκριμένες): ${num2(B.balance)} · ${B.prev_year}: ${num2(B.prev_balance)}</p>
       <label>Αιτιολογία</label><textarea id="ad-r" rows="2" maxlength="1000"></textarea><p id="ad-m" class="form-msg"></p>

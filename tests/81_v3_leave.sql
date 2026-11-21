@@ -7,6 +7,9 @@ insert into app_users(email,name,role,store) values
  ('owner@x.gr','ΓΔ','owner',null),('hr@x.gr','HR','hr',null),('acc@x.gr','Λογιστήριο','accounting',null),
  ('glyfada@x.gr','Manager Γλυφάδας','manager','Γλυφάδα'),('kifisia@x.gr','Manager Κηφισιάς','manager','Κηφισιά'),
  ('trainer@x.gr','Εκπαιδευτής','trainer',null);
+-- Ο γενικός μηχανισμός μεταφοράς/εκκαθάρισης ελέγχεται εδώ με «τακτοποιημένο έτος» 2020· η απόφαση ΓΔ για ≤ 2025
+-- ελέγχεται στο 91_leave_settled_2025.sql.
+update leave_settings set settled_through_year = 2020;
 insert into employees(code,first,last,store,company,specialty,work_week,hire_date) values
  ('L1','Νίκος','Αλεξίου','Γλυφάδα','BEST GREEK GYMS IKE','Ρεσεψιόν',5,'2024-03-16'),
  ('L2','Μαρία','Βλάχου','Γλυφάδα','BEST GREEK GYMS IKE','Ρεσεψιόν',5,'2026-03-16'),
