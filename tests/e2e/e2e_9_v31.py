@@ -116,7 +116,7 @@ with sync_playwright() as p:
     no_js_errors(m, "manager αναφορά"); m.context.close()
 
     # ══ 6. Σύνδεσμος στατιστικών Ρεσεψιόν + παλιά μέλη ══
-    go(g, "#/stats-entry"); g.click("#se-links"); g.click('[data-new="Γλυφάδα"]'); g.wait_for_selector("#lk-url")
+    go(g, "#/stats-entry"); g.wait_for_selector("#se-links"); g.click("#se-links"); g.click('[data-new="Γλυφάδα"]'); g.wait_for_selector("#lk-url")
     url = g.input_value("#lk-url")
     check("s.html#" in url, "δημιουργία συνδέσμου (εμφανίζεται μία φορά)")
     s = new_page(b, 420, 900); s.goto(url.replace(url.split("s.html")[0], BASE)); s.wait_for_selector("#sl-emp")

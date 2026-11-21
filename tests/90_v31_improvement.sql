@@ -21,8 +21,8 @@ select pg_temp.as_user('glyfada@x.gr');
 select pg_temp.expect_fail($$select imp_create('{"employee_code":"B2","severity":"minor","incident_type":"Καθυστέρηση","description":"Καθυστερήσεις προσέλευσης","incident_date":"2026-11-10"}')$$, 'manager: όχι εργαζόμενος άλλου καταστήματος');
 select pg_temp.expect_fail($$select imp_create('{"employee_code":"B1","severity":"x","incident_type":"Καθυστέρηση","description":"Καθυστερήσεις","incident_date":"2026-11-10"}')$$, 'βαρύτητα από τις τρεις επιλογές');
 select (imp_create('{"employee_code":"B1","severity":"significant","incident_type":"Καθυστέρηση προσέλευσης","description":"Τρεις καθυστερήσεις άνω των 15 λεπτών τον Νοέμβριο.","incident_date":"2026-11-10","documentation":"Βιβλίο παρουσιών","actions":"Συζήτηση και σχέδιο δράσης"}'))->>'id' as c1 \gset
-select pg_temp.eq((select stage || '|' || status || '|' || coalesce(next_review_due::text, 'χωρίς') from imp_list() where id = :c1), '1|open|χωρίς',
-  'στάδιο 1· χωρίς αυτόματη προθεσμία μέχρι να οριστούν ημερολογιακές/εργάσιμες ημέρες');
+select pg_temp.eq((select stage || '|' || status || '|' || (next_review_due - current_date) from imp_list() where id = :c1), '1|open|15',
+  'στάδιο 1· απόφαση 21/11: ημερολογιακές ημέρες → αυτόματη προθεσμία σε 15 ημέρες');
 select (imp_create('{"employee_code":"B1","severity":"minor","incident_type":"Στολή","description":"Χωρίς στολή εργασίας στη βάρδια.","incident_date":"2026-11-12","next_review_due":"2026-12-01"}'))->>'id' as c2 \gset
 select pg_temp.eq((select count(*) from imp_list('B1')), 2::bigint, 'περισσότερες από μία ξεχωριστές υποθέσεις ανά εργαζόμενο');
 select pg_temp.eq((select ref from imp_list() where id = :c1) like 'ΒΣ-2026-%', true, 'μοναδικός αριθμός υπόθεσης');
@@ -37,13 +37,14 @@ select pg_temp.eq((select count(*) from imp_list()), 0::bigint, 'ούτε το �
 -- ═══════ Ρύθμιση ημερών (ΓΔ) → προτεινόμενη προθεσμία ═══════
 select pg_temp.as_user('glyfada@x.gr');
 select pg_temp.expect_fail($$select imp_set_day_mode('calendar')$$, 'μόνο η ΓΔ ορίζει τον τύπο ημερών');
-select pg_temp.eq(imp_suggest_due(1, '2026-11-02'), null::date, 'χωρίς απόφαση: κανένας αυτόματος υπολογισμός');
 select pg_temp.as_user('owner@x.gr');
+select imp_set_day_mode(null);
+select pg_temp.eq(imp_suggest_due(1, '2026-11-02'), null::date, 'χωρίς ρύθμιση: κανένας αυτόματος υπολογισμός');
 select imp_set_day_mode('working');
 select pg_temp.eq(imp_suggest_due(1, '2026-11-02') || '|' || imp_suggest_due(2, '2026-11-02'), '2026-11-23|2026-11-11', 'εργάσιμες: 15 και 7 εργάσιμες ημέρες');
 select imp_set_day_mode('calendar');
 select pg_temp.eq(imp_suggest_due(1, '2026-11-02') || '|' || imp_suggest_due(3, '2026-11-02'), '2026-11-17|2026-11-09', 'ημερολογιακές: 15 / 7');
-select imp_set_day_mode(null);
+select imp_set_day_mode('calendar');
 
 -- ═══════ Επανεξέταση: εκβάσεις, αιτιολογία, ιστορικό, καμία αυτόματη ενέργεια ═══════
 select pg_temp.as_user('glyfada@x.gr');
@@ -67,7 +68,7 @@ select pg_temp.as_user('glyfada@x.gr');
 select pg_temp.eq((select overdue || '|' || stage || '|' || status from imp_list() where id = :c1), 'true|1|open', 'παρέλευση προθεσμίας: μόνο επισήμανση καθυστέρησης, καμία αυτόματη ενέργεια');
 select pg_temp.eq((select string_agg(action || coalesce(':' || outcome, ''), ',' order by at) from jsonb_to_recordset(imp_get(:c1)->'events') as x(action text, outcome text, at timestamptz)),
   'created,review:partial,review:noncompliant,stage_change,review:back', 'πλήρες ιστορικό με εκβάσεις');
-select pg_temp.eq((select count(*) from jsonb_to_recordset(imp_get(:c1)->'events') as x(action_date date, due_date date) where action_date is not null and due_date is not null), 2::bigint,
+select pg_temp.eq((select count(*) from jsonb_to_recordset(imp_get(:c1)->'events') as x(action_date date, due_date date) where action_date is not null and due_date is not null), 3::bigint,
   'πραγματικές ημερομηνίες χωριστά από προθεσμίες');
 
 -- Έγγραφη προειδοποίηση: ροή Manager → HR → ΓΔ → HR· στάδιο 4 χωρίς αλλαγή κατάστασης εργαζομένου

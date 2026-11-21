@@ -41,6 +41,8 @@ with sync_playwright() as p:
     check("συμπληρώστε όλα τα πεδία ή κανένα" in pg.inner_text("#se-msg"), "μισοσυμπληρωμένη γραμμή απορρίπτεται")
     pg.fill(f'{xr} input[data-f=enr_from_trials]', "0"); pg.dispatch_event(f'{xr} input[data-f=enr_from_trials]', "input")
     check(pg.inner_text(f'{xr} [data-out=trialconv]') == "—", "μηδενικός παρονομαστής → «—»")
+    for f in ["old_trials_done", "old_enr_from_trials", "old_direct"]:   # 3.1: παλιά μέλη σε κάθε είδος
+        pg.fill(f'{xr} input[data-f={f}]', "0"); pg.dispatch_event(f'{xr} input[data-f={f}]', "input")
     pg.click("#se-save"); pg.wait_for_timeout(1200)
     check("χωρίς καταχώριση" not in pg.inner_text(row) and "χωρίς καταχώριση" not in pg.inner_text(xr), "αποθηκεύτηκαν (και η ημέρα με μηδενικά)")
     check("χωρίς καταχώριση" in pg.inner_text('tr[data-key="T101|Επίβλεψη"]'), "ημέρα χωρίς καταχώριση ≠ μηδέν")

@@ -27,8 +27,8 @@ select pg_temp.as_user('glyfada@x.gr');
 -- Ρεσεψιόν: 10 ενημερώσεις = DR 4 + LOST 6, CB 2 → μετατροπή (4+2)/10 = 60%
 select stats_save('2026-10-20', '[
   {"employee_code":"R1","dr":4,"lost":6,"cb":2,"trials_sent":3,"enr_fitness":3,"enr_body":2,"enr_muscle":1,"enr_from_trials":1,"old_dr":1,"old_lost":2,"old_cb":0,"old_trials_sent":0,"old_enr_fitness":1,"old_enr_body":0,"old_enr_muscle":0,"old_enr_from_trials":0,"old_direct":0},
-  {"employee_code":"S1","dr":2,"lost":3,"cb":1,"trials_sent":4,"trials_attended":2,"trials_enrolled":1,"enr_body":1,"enr_muscle":1,"enr_pilates":1},
-  {"employee_code":"X1","trials_done":5,"enr_from_trials":2}]') as res \gset
+  {"employee_code":"S1","dr":2,"lost":3,"cb":1,"trials_sent":4,"trials_attended":2,"trials_enrolled":1,"enr_body":1,"enr_muscle":1,"enr_pilates":1,"old_dr":0,"old_lost":0,"old_cb":0,"old_trials_sent":0,"old_trials_attended":0,"old_trials_enrolled":0,"old_enr_body":0,"old_enr_muscle":0,"old_enr_pilates":0,"old_direct":0},
+  {"employee_code":"X1","trials_done":5,"enr_from_trials":2,"old_trials_done":0,"old_enr_from_trials":0,"old_direct":0}]') as res \gset
 select pg_temp.eq((select count(*) from jsonb_array_elements((:'res'::jsonb)->'rows') r where (r->>'ok')::boolean), 3::bigint, 'καταχώριση ημέρας για 3 εργαζόμενους/ειδικότητες');
 select pg_temp.eq((select informed from daily_stats where employee_code = 'R1'), 10, 'Ενημερώσεις = DR + LOST (υπολογίζονται)');
 select pg_temp.eq((select store||'|'||specialty||'|'||kind||'|'||created_by from daily_stats where employee_code = 'R1'), 'Γλυφάδα|Ρεσεψιόν|reception|glyfada@x.gr', 'καταχώριση συνδέεται με κατάστημα, ειδικότητα και χρήστη');
@@ -46,7 +46,7 @@ select pg_temp.expect_fail($$select stats_save(athens_today() + 1, '[]')$$, 'μ�
 select pg_temp.expect_row_err(stats_save('2026-10-20', '[{"employee_code":"X1","trials_done":9,"enr_from_trials":9}]'), 'διπλή καταχώριση ίδιας ημέρας');
 select pg_temp.eq((select trials_done from daily_stats where employee_code = 'X1'), 5, 'η διπλή καταχώριση δεν άλλαξε τα στοιχεία');
 -- Μηδενικά ≠ χωρίς καταχώριση
-select stats_save('2026-10-21', '[{"employee_code":"X1","trials_done":0,"enr_from_trials":0}]');
+select stats_save('2026-10-21', '[{"employee_code":"X1","trials_done":0,"enr_from_trials":0,"old_trials_done":0,"old_enr_from_trials":0,"old_direct":0}]');
 select pg_temp.eq((select count(*) from daily_stats where employee_code = 'X1'), 2::bigint, 'ημέρα με μηδενικά αποθηκεύεται ως καταχώριση');
 select pg_temp.eq((select count(*) from daily_stats where employee_code = 'R1' and stat_date = '2026-10-21'), 0::bigint, 'ημέρα χωρίς καταχώριση: καμία εγγραφή (όχι μηδέν)');
 

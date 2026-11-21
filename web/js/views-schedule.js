@@ -52,7 +52,7 @@ export async function schedule(params) {
     <div class="tabs sc-days">${w.days.map((d, i) => `<a href="javascript:void 0" data-day="${d}" class="${d === F.day ? "on" : ""}">${DOW_S[i]} ${d.slice(8)}/${d.slice(5, 7)}${uncovered(d) ? ` <span class="dot-bad" title="Υπάρχει διάστημα χωρίς κανέναν διαθέσιμο">●</span>` : ""}${w.holidays[d] ? ` <span class="muted small">(${h(w.holidays[d])})</span>` : ""}</a>`).join("")}</div>
     ${timeline(w, F.day, cov, manage)}
     <div class="legend" style="margin-top:10px">
-      <span><i style="background:#2a7"></i>Πρόγραμμα (χρώμα ανά εργαζόμενο)</span><span><i class="lg-mgr"></i>Manager / assistant manager</span><span><strong>Ρεπό</strong> — χωρίς ώρες, δεν μετρά</span><span>(+1) λήγει μετά τα μεσάνυχτα</span><span><i class="lg-temp"></i>Προσωρινή αλλαγή</span><span><i class="lg-leave"></i>Άδεια / απουσία — δεν μετρά</span>
+      <span><i style="background:#2a7"></i>Πρόγραμμα (χρώμα ανά εργαζόμενο)</span><span><i class="lg-mgr"></i>Manager / assistant manager (στη Ρεσεψιόν μόνο εμφάνιση — δεν μετρά στην κάλυψη)</span><span><strong>Ρεπό</strong> — χωρίς ώρες, δεν μετρά</span><span>(+1) λήγει μετά τα μεσάνυχτα</span><span><i class="lg-temp"></i>Προσωρινή αλλαγή</span><span><i class="lg-leave"></i>Άδεια / απουσία — δεν μετρά</span>
       <span><i class="lg-gone"></i>Μετά την αποχώρηση</span><span><i style="background:var(--bad)"></i>Κανένας διαθέσιμος σε ώρα λειτουργίας</span><span>⏳ Άδεια σε αναμονή (μετρά στην κάλυψη)</span><span>⚠ Επικαλυπτόμενα διαστήματα</span>
     </div>
     <p class="muted small" style="margin-top:6px">Η κάλυψη μετρά όσους είναι προγραμματισμένοι στην αρχή κάθε μισάωρου, χωρίς όσους είναι σε εγκεκριμένη άδεια ή έχουν αποχωρήσει. Υπο-/υπερστελέχωση εμφανίζεται μόνο όπου έχουν οριστεί απαιτήσεις κάλυψης.</p>
@@ -63,7 +63,7 @@ export async function schedule(params) {
     <p class="muted small" style="margin-top:8px">Καμία αυτόματη αντικατάσταση: ο manager επιλέγει ποιος καλύπτει (προσωρινή αλλαγή).</p></div>` : ""}
   <div class="card" style="margin-top:16px"><div class="card-head"><h3>Εβδομαδιαίες ώρες</h3></div>
     <div class="table-wrap"><table class="stack"><thead><tr><th>Εργαζόμενος</th><th>Σύστημα</th><th class="r">Συμβατικές</th><th class="r">Προγραμματισμένη εργασία</th><th class="r">Ώρες σε άδεια</th><th class="r">Απόκλιση</th></tr></thead><tbody>
-    ${w.employees.map((e) => `<tr><td><span class="sw" style="background:${empColor(e.code)}"></span><strong>${h(e.name)}</strong>${e.store_role ? ` <span class="badge b-mgr">${h(e.store_role_label)}</span>` : ""}<span class="sub">${h(e.specialty || "—")}${e.leave_date ? ` · αποχώρηση ${dmy(e.leave_date)}` : ""}</span></td>
+    ${w.employees.map((e) => `<tr><td><span class="sw" style="background:${empColor(e.code)}"></span><strong>${h(e.name)}</strong>${e.store_role ? ` <span class="badge b-mgr">${h(e.store_role_label)}${e.shown_only ? " · εκτός κάλυψης" : ""}</span>` : ""}<span class="sub">${h(e.specialty || "—")}${e.leave_date ? ` · αποχώρηση ${dmy(e.leave_date)}` : ""}</span></td>
       <td>${e.work_week ? (e.work_week === 6 ? "Εξαήμερο" : "Πενθήμερο") : `<span class="badge b-missing">Λείπει</span>`}</td><td class="r num">${e.contract_hours ? num2(e.contract_hours) : "—"}</td>
       <td class="r num">${num2(e.planned_hours)}</td><td class="r num">${Number(e.leave_hours) ? num2(e.leave_hours) : "—"}</td>
       <td class="r num">${e.deviation === null ? "—" : `${Number(e.deviation) > 0 ? "+" : ""}${num2(e.deviation)}`}${e.has_leave && Number(e.deviation) < 0 ? `<span class="sub">εβδομάδα με άδεια — όχι υποχρέωση αναπλήρωσης</span>` : ""}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Δεν υπάρχουν εργαζόμενοι.</td></tr>`}
@@ -111,7 +111,7 @@ function timeline(w, day, cov, manage) {
     const leaveNoShift = d.leave && !(d.segments || []).length ? `<div class="sc-note">${h(d.leave.label || "άδεια")}</div>`
       : d.off ? `<div class="sc-note off">Ρεπό</div>` : d.deleted ? `<div class="sc-note">Διαγράφηκε το ωράριο</div>` : "";
     return `<div class="sc-col ${e.store_role ? "sc-mgr" : ""}"><button class="sc-ch" ${manage ? `data-emp="${h(e.code)}"` : "disabled"} style="--c:${c}" title="${manage ? "Αλλαγή προγράμματος" : ""}">
-        <strong>${h(e.name)}</strong>${e.store_role ? `<em class="badge b-mgr">${h(e.store_role_label)}</em>` : ""}<span>${h(e.specialty || "")}${d.minutes ? ` · ${num2(d.minutes / 60)}ώ` : ""}${d.pending ? ` · ⏳ ${h(d.pending.label)}` : ""}${d.overlap ? " · ⚠" : ""}</span></button>
+        <strong>${h(e.name)}</strong>${e.store_role ? `<em class="badge b-mgr">${h(e.store_role_label)}${e.shown_only ? " · εκτός κάλυψης" : ""}</em>` : ""}<span>${h(e.specialty || "")}${d.minutes ? ` · ${num2(d.minutes / 60)}ώ` : ""}${d.pending ? ` · ⏳ ${h(d.pending.label)}` : ""}${d.overlap ? " · ⚠" : ""}</span></button>
       <div class="sc-track" style="height:${H}px">${bars}${leaveNoShift}</div></div>`;
   };
   return `<div class="sc-wrap"><div class="sc-grid">

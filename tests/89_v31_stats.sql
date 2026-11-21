@@ -39,14 +39,24 @@ select stats_save('2026-10-01', format('[{"id":%s,"version":%s,"employee_code":"
 select pg_temp.eq((select dr || '|' || coalesce(old_dr::text, 'κενό') from daily_stats where id = :l1), '6|κενό', 'διόρθωση παλιάς εγγραφής χωρίς επινοημένα μηδενικά');
 reset role;
 select pg_temp.expect_fail($$insert into daily_stats(employee_code, stat_date, store, specialty, kind, trials_done, enr_from_trials, old_dr, created_by) values ('S1','2026-11-01','Γλυφάδα','Επίβλεψη','exclusive',1,1,1,'x')$$,
-  'πεδία παλιών μελών μόνο στη Ρεσεψιόν');
+  'πεδίο παλιών μελών που δεν ανήκει στο είδος');
+select pg_temp.expect_fail($$insert into daily_stats(employee_code, stat_date, store, specialty, kind, trials_done, enr_from_trials, old_trials_done, created_by) values ('S1','2026-11-01','Γλυφάδα','Επίβλεψη','exclusive',1,1,1,'x')$$,
+  'μισά συμπληρωμένα παλιά μέλη απορρίπτονται');
 
+-- Παλιά μέλη και στην Επίβλεψη (απόφαση 21/11: σε κάθε είδος στατιστικών)
+select pg_temp.as_user('glyfada@x.gr');
+select pg_temp.eq((stats_save('2026-11-04', '[{"employee_code":"S1","dr":2,"lost":1,"cb":1,"trials_sent":1,"trials_attended":1,"trials_enrolled":1,"enr_body":1,"enr_muscle":0,"enr_pilates":1}]')->'rows'->0->>'error'),
+  'Λείπει το πεδίο old_dr.', 'Επίβλεψη: συμπληρώνονται και τα «Παλιά μέλη»');
+select stats_save('2026-11-04', '[{"employee_code":"S1","dr":2,"lost":1,"cb":1,"trials_sent":1,"trials_attended":1,"trials_enrolled":1,"enr_body":1,"enr_muscle":0,"enr_pilates":1,
+  "old_dr":1,"old_lost":0,"old_cb":1,"old_trials_sent":0,"old_trials_attended":0,"old_trials_enrolled":0,"old_enr_body":1,"old_enr_muscle":0,"old_enr_pilates":1,"old_direct":2}]');
+select pg_temp.eq((select old_enr_pilates || '|' || old_direct from daily_stats where employee_code = 'S1'), '1|2', 'Επίβλεψη: αποθήκευση παλιών μελών');
 select pg_temp.as_user('owner@x.gr');
 select * from stats_members_report('2026-10-01', '2026-11-30', 'Γλυφάδα') \gset m_
-select pg_temp.eq(:m_new_enrolled || '|' || :m_renewals || '|' || :m_grand_total, '5|9|14', 'νέες εγγραφές (DR+CB) 4+1 · ανανεώσεις (DR+CB παλιών) 4+5 · σύνολο 14');
+select pg_temp.eq(:m_new_enrolled || '|' || :m_old_enrolled || '|' || :m_renewals || '|' || :m_grand_total, '5|9|13|18', 'νέες εγγραφές 5 · DR+CB παλιών 9 · ανανεώσεις 9 + Άμεσο 4 = 13 · σύνολο 18');
 select pg_temp.eq(:m_new_informed || '|' || :m_old_informed, '10|8', 'ενημερώσεις (DR+LOST) χωριστά — δεν είναι εγγραφές');
-select pg_temp.eq(:m_old_direct, 4, '«Παλιά μέλη — Άμεσο» χωριστά, ΔΕΝ προστίθεται στο σύνολο');
+select pg_temp.eq(:m_old_direct, 4, '«Παλιά μέλη — Άμεσο»: ξεχωριστό μέγεθος (όχι μέρος του DR), φαίνεται χωριστά και προστίθεται στις ανανεώσεις');
 select pg_temp.eq(:m_rows_unsplit || '|' || :m_unsplit_enrolled, '1|7', 'παλιές εγγραφές χωρίς διάκριση: μετρώνται χωριστά, όχι ως νέα ή παλιά');
+select pg_temp.eq((select renewals || '|' || grand_total from stats_members_report('2026-11-01', '2026-11-30', 'Γλυφάδα', 'supervision')), '4|7', 'report Επίβλεψης: ανανεώσεις 1+1+Άμεσο 2 = 4 · σύνολο 3+4 = 7');
 
 -- ═══════ 16. Σύνδεσμος στατιστικών Ρεσεψιόν ═══════
 select pg_temp.as_user('glyfada@x.gr');

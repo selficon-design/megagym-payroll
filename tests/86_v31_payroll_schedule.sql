@@ -146,20 +146,22 @@ select pg_temp.as_user('glyfada@x.gr');
 select sched_set_pattern('M1', '2026-11-30', '{"1":[["09:00","13:00"]],"2":[["09:00","17:00"]]}', 'Τοποθέτηση στη Ρεσεψιόν');
 select sched_week('Γλυφάδα', '2026-11-30', 'Ρεσεψιόν') as w \gset
 select pg_temp.eq(pg_temp.emp(:'w','M1')->>'store_role_label', 'Manager', 'ο manager εμφανίζεται στη Ρεσεψιόν με ένδειξη ρόλου');
-select pg_temp.eq((pg_temp.slot(:'w','2026-11-30','10:00')->>'count')::int, 2, 'οι πραγματικές τοποθετήσεις του μετρούν (P2 + M1)');
-select pg_temp.eq((pg_temp.slot(:'w','2026-11-30','15:00')->>'count')::int, 0, 'η εμφάνισή του δεν σημαίνει κάλυψη όλων των ωρών');
+select pg_temp.eq((pg_temp.slot(:'w','2026-11-30','10:00')->>'count')::int || '|' || (pg_temp.emp(:'w','M1')->>'shown_only'), '1|true', 'απόφαση 21/11: ο manager φαίνεται στη Ρεσεψιόν αλλά ΔΕΝ μετρά στην κάλυψη (μόνο P2)');
+select pg_temp.eq((pg_temp.emp(:'w','M1')->'days'->'2026-11-30'->>'minutes')::int, 240, 'το ωράριό του εμφανίζεται κανονικά');
+select pg_temp.eq((pg_temp.slot(sched_week('Γλυφάδα', '2026-11-30', 'Επίβλεψη'),'2026-11-30','10:00')->>'count')::int, 1, 'μετρά στην κάλυψη του δικού του τμήματος');
 select pg_temp.eq((select count(*) from jsonb_array_elements(sched_week('Γλυφάδα', '2026-11-30', null)->'employees') x where x->>'code' = 'M1'), 1::bigint, 'χωρίς διπλή εμφάνιση στο «Όλα τα τμήματα»');
 select pg_temp.eq(pg_temp.emp(sched_week('Γλυφάδα', '2026-11-30', 'Επίβλεψη'),'M1') is not null, true, 'εμφανίζεται και στο δικό του τμήμα');
 select (req_create('{"category":"leave","employee_code":"M1","entry_mode":"manager_record","leave_type":"annual","start_date":"2026-11-30","end_date":"2026-11-30","days_requested":"1","body":"Παρακαλώ να εγκρίνετε την άδεια."}'))->>'id' as ml \gset
 select req_submit(:'ml', 1);
 select sched_week('Γλυφάδα', '2026-11-30', 'Ρεσεψιόν') as w \gset
-select pg_temp.eq((pg_temp.emp(:'w','M1')->'days'->'2026-11-30'->'pending'->>'ref') is not null and (pg_temp.slot(:'w','2026-11-30','10:00')->>'count')::int = 2, true,
-  'εκκρεμές αίτημα: φαίνεται, δεν αφαιρεί ακόμη κάλυψη');
+select pg_temp.eq((pg_temp.emp(:'w','M1')->'days'->'2026-11-30'->'pending'->>'ref') is not null and (pg_temp.slot(:'w','2026-11-30','10:00')->>'count')::int = 1, true,
+  'εκκρεμές αίτημα manager: φαίνεται στη Ρεσεψιόν');
 select pg_temp.as_user('hr@x.gr');
 select leave_set_base('M1', 22, '2024-01-01', 'Βάση');
 select req_decide(:'ml', 'approve', '{"message":"Η άδεια εγκρίθηκε."}', (select version from hr_requests where id = :'ml'));
 select pg_temp.as_user('glyfada@x.gr');
-select pg_temp.eq((pg_temp.slot(sched_week('Γλυφάδα', '2026-11-30', 'Ρεσεψιόν'),'2026-11-30','10:00')->>'count')::int, 1, 'εγκεκριμένη άδεια: αφαιρεί τη διαθεσιμότητα');
+select pg_temp.eq((pg_temp.emp(sched_week('Γλυφάδα', '2026-11-30', 'Ρεσεψιόν'),'M1')->'days'->'2026-11-30'->'leave'->>'type') || '|' || (select count(*) from jsonb_array_elements(sched_week('Γλυφάδα', '2026-11-30', 'Ρεσεψιόν')->'needs_cover') x where x->>'employee_code' = 'M1'), 'annual|0',
+  'εγκεκριμένη άδεια manager: φαίνεται στη Ρεσεψιόν, χωρίς «χρειάζεται κάλυψη» εκεί');
 select pg_temp.eq((select string_agg(employee_code || ':' || status || ':' || coalesce(store_role, '-'), ',') from leave_calendar('2026-11-30', '2026-11-30', 'Γλυφάδα', 'Ρεσεψιόν')), 'M1:approved:manager',
   'ημερολόγιο αδειών Ρεσεψιόν: και οι managers του καταστήματος');
 select pg_temp.as_user('kifisia@x.gr');

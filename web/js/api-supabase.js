@@ -226,7 +226,7 @@ function hrApi(sb, all, rpc, fn) {
       });
     },
     statsSave: (date, rows) => rpc("stats_save", { p_date: date, p_rows: rows }),
-    statsMembers: (from, to, store) => rpc("stats_members_report", { p_from: from, p_to: to, p_store: store || null }),
+    statsMembers: (from, to, store, kind) => rpc("stats_members_report", { p_from: from, p_to: to, p_store: store || null, p_kind: kind || "reception" }),
     statLinks: () => rpc("statlink_list"),
     statLinkCreate: (store) => rpc("statlink_create", { p_store: store }),
     statLinkRevoke: (store, reason) => rpc("statlink_revoke", { p_store: store, p_reason: reason || null }),
