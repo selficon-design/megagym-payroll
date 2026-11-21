@@ -10,6 +10,7 @@ const SHELL = [
   "a.html", "js/link.js", "js/voice.js", "js/views-keys.js",
   "js/views-leave.js", "js/views-schedule.js", "js/views-perms.js", "js/views-guide.js", "js/guide-pdf.js", "js/version.js",
   "js/views-reports.js", "s.html", "js/statlink.js", "js/views-improvement.js",
+  "tameia/", "tameia/index.html", "tameia/k.html", "tameia/tameia.css", "tameia/manifest.webmanifest", "tameia/js/app.js", "tameia/js/klink.js", "tameia/js/common.js",
 ];
 
 self.addEventListener("install", (e) => {

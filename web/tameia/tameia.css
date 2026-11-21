@@ -1,0 +1,52 @@
+/* Ταμεία · συμπληρωματικά στυλ (η βάση είναι το ../styles.css της εφαρμογής HR) */
+.t-ok{color:var(--ok);font-weight:700}
+.t-bad{color:var(--bad);font-weight:700}
+.t-warn{color:var(--warn);font-weight:650}
+.tb-l{display:flex;align-items:center;gap:8px;margin:0;font-weight:600;color:var(--muted)}
+.tb-l input{width:auto}
+.shifts{display:inline-flex;gap:4px}
+.sh{width:24px;height:24px;border-radius:6px;display:inline-grid;place-items:center;font-size:12px;font-weight:800;background:#eef0f3;color:#9aa3ad}
+.sh.on{background:var(--ok-soft);color:var(--ok)}
+.sh.sup{background:var(--info-soft);color:var(--info)}
+tr.voided td{opacity:.55}
+tr.voided td strong{text-decoration:line-through}
+.recon{font-size:14px}
+.recon td{padding:7px 4px;border-bottom:1px solid var(--line-2)}
+.recon tr.tot td{font-weight:800;border-top:2px solid var(--line)}
+.timeline{list-style:none;margin:0;padding:0}
+.timeline li{padding:8px 0;border-bottom:1px solid var(--line-2)}
+.timeline li:last-child{border-bottom:0}
+.timeline .sub{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
+
+/* Σύνδεσμος ρεσεψιόν */
+.cl-form h3{font-size:18px}
+.cl-sec{margin-top:26px;padding-top:18px;border-top:2px solid var(--accent)}
+.cl-sec-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.cl-seg{display:flex;flex-wrap:wrap}
+.cl-seg button{padding:10px 16px}
+.cl-shifts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.cl-shift{border:2px solid var(--line);background:#fff;border-radius:14px;padding:14px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:4px;font:inherit}
+.cl-shift strong{font-size:17px}
+.cl-shift span{font-size:13px;color:var(--muted)}
+.cl-shift.on{border-color:var(--accent);background:var(--accent-soft)}
+.cl-shift:disabled{opacity:.45;cursor:not-allowed}
+.cl-net{background:#f6f7f9;border-radius:14px;padding:16px 18px;align-self:end}
+.cl-net .label{font-size:13px;color:var(--muted);font-weight:650}
+.cl-net .value{font-size:30px;font-weight:800;letter-spacing:-.6px;margin-top:4px}
+.cl-net .hint{font-size:12.5px;color:var(--muted)}
+.cl-row{display:flex;gap:10px;align-items:flex-end;padding:10px 0;border-bottom:1px dashed var(--line)}
+.cl-row label{margin-top:0}
+.cl-wrap{flex-wrap:wrap}
+.cl-f1{flex:1 1 120px;min-width:110px}
+.cl-f2{flex:2 1 200px;min-width:180px}
+.cl-del{min-height:52px;color:var(--bad)}
+.cl-photo{min-height:52px;width:100%;font-weight:650;color:var(--ink-2)}
+.cl-photo.has{background:var(--ok-soft);border-color:#b9e2c9;color:var(--ok)}
+.cl-kv{grid-template-columns:200px 1fr;font-size:16px;gap:10px 16px}
+@media (max-width:700px){
+  .cl-shifts{grid-template-columns:1fr}
+  .cl-kv{grid-template-columns:1fr 1fr}
+  .k-sign{padding:20px 16px}
+}
+.perm-table th.c,.perm-table td.c{width:110px}
+.cash-table td{vertical-align:top}
