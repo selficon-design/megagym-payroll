@@ -50,3 +50,51 @@ tr.voided td strong{text-decoration:line-through}
 }
 .perm-table th.c,.perm-table td.c{width:110px}
 .cash-table td{vertical-align:top}
+
+/* ═══ Ταυτότητα Ταμείων: σκούρο μπλε (η εφαρμογή HR έχει μαύρο) ═══ */
+:root{--side:#0b1f3d;--side-2:#173462;--side-ink:#c9d6ea}
+.side-foot{border-top-color:#1c3560}
+.me-box .role-chip{background:#173462}
+.boot{background:#0b1f3d}
+.login{background:radial-gradient(1200px 600px at 20% -10%,#1d3f73 0,#08172e 60%)}
+.kiosk,.k-head{background:#0b1f3d}
+.k-head{border-bottom-color:#1c3560}
+.side-head .app-tag{display:block;margin-top:6px;font-size:11.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#8fb3ff}
+.theme-btn{display:inline-flex;align-items:center;gap:6px}
+
+/* ═══ Νυχτερινή εμφάνιση ═══ */
+html[data-theme=dark]{
+  --ink:#e6ebf2; --ink-2:#c3ccd8; --muted:#8f9bab; --line:#27364f; --line-2:#1e2b41;
+  --bg:#0c1525; --card:#131f34;
+  --ok:#3ccf7a; --ok-soft:#123222; --warn:#f0a63a; --warn-soft:#3a2b12; --bad:#ff6b5b; --bad-soft:#3d1c1a;
+  --info:#7aa8ff; --info-soft:#17294a; --accent-soft:#3a3112;
+  --side:#071730; --side-2:#14305c;
+  --shadow:0 1px 2px rgba(0,0,0,.4);
+  color-scheme:dark;
+}
+html[data-theme=dark] body{background:var(--bg)}
+html[data-theme=dark] .topbar{background:rgba(12,21,37,.92)}
+html[data-theme=dark] input,html[data-theme=dark] select,html[data-theme=dark] textarea{background:#0f1a2d;border-color:#31425f;color:var(--ink)}
+html[data-theme=dark] input:disabled,html[data-theme=dark] textarea:disabled{background:#16233a;color:var(--ink-2)}
+html[data-theme=dark] .btn{background:#182741;border-color:#31425f;color:var(--ink)}
+html[data-theme=dark] .btn:hover{background:#1f3152}
+html[data-theme=dark] .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+html[data-theme=dark] .btn.danger{color:var(--bad);border-color:#5a2a27}
+html[data-theme=dark] .btn.ghost{background:transparent;border-color:transparent}
+html[data-theme=dark] th{background:#18263e;color:var(--muted)}
+html[data-theme=dark] tbody tr:hover,html[data-theme=dark] tr.click:hover td{background:#17253d}
+html[data-theme=dark] .chip,html[data-theme=dark] .seg{background:#182741;border-color:#31425f;color:var(--ink)}
+html[data-theme=dark] .chip.on,html[data-theme=dark] .seg button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+html[data-theme=dark] .seg button{color:var(--ink-2)}
+html[data-theme=dark] .b-missing,html[data-theme=dark] .sh{background:#1d2b44;color:#9fb0c6}
+html[data-theme=dark] .b-role{color:#ffd34d}
+html[data-theme=dark] .note{color:#bcd2ff}
+html[data-theme=dark] .note.warn{color:#ffd59a}
+html[data-theme=dark] .note.bad{color:#ffb4ab}
+html[data-theme=dark] .dlg{background:var(--card);color:var(--ink)}
+html[data-theme=dark] .dlg::backdrop{background:rgba(0,0,0,.6)}
+html[data-theme=dark] .toast{background:#e6ebf2;color:#0c1525}
+html[data-theme=dark] .login-card{background:var(--card);color:var(--ink)}
+html[data-theme=dark] .cl-net{background:#18263e}
+html[data-theme=dark] .perm-table tr.mod th{background:#18263e}
+html[data-theme=dark] a{color:inherit}

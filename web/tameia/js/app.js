@@ -538,6 +538,15 @@ async function boot() {
     } catch (err) { $("#login-msg").textContent = friendly(err); }
     btn.disabled = false;
   };
+  // Νυχτερινή εμφάνιση: προτίμηση αυτού του browser
+  const theme = () => document.documentElement.dataset.theme === "dark";
+  const drawTheme = () => { const b = $("#theme-btn"); b.textContent = theme() ? "☀ Ημέρα" : "🌙 Νύχτα"; b.setAttribute("aria-pressed", String(theme())); b.title = theme() ? "Φωτεινή εμφάνιση" : "Νυχτερινή εμφάνιση"; };
+  $("#theme-btn").onclick = () => {
+    if (theme()) delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = "dark";
+    try { localStorage.setItem("mg-tameia-theme", theme() ? "dark" : "light"); } catch {}
+    drawTheme();
+  };
+  drawTheme();
   $("#open-menu").onclick = () => $("#app").classList.add("menu-open");
   $("#close-menu").onclick = $("#scrim").onclick = () => $("#app").classList.remove("menu-open");
   window.addEventListener("hashchange", route);

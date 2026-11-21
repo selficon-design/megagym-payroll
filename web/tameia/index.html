@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>MEGA GYM · Ταμεία</title>
 <meta name="description" content="Εσωτερική εφαρμογή MEGA GYM για το κλείσιμο ταμείου των καταστημάτων.">
-<meta name="theme-color" content="#0b0d10">
+<meta name="theme-color" content="#0b1f3d">
 <meta name="robots" content="noindex,nofollow">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -16,6 +16,7 @@
 <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
 <link rel="stylesheet" href="../styles.css">
 <link rel="stylesheet" href="tameia.css">
+<script>try{if(localStorage.getItem("mg-tameia-theme")==="dark")document.documentElement.dataset.theme="dark"}catch(e){}</script>
 </head>
 <body>
 <div id="boot" class="boot"><img src="../mega-gym-logo.png" alt="MEGA GYM"><div class="spinner"></div></div>
@@ -37,7 +38,7 @@
 <div id="app" class="app" hidden>
   <aside id="sidebar" class="sidebar">
     <div class="side-head">
-      <img class="side-logo" src="../mega-gym-logo.png" alt="MEGA GYM Fitness Clubs">
+      <div><img class="side-logo" src="../mega-gym-logo.png" alt="MEGA GYM Fitness Clubs"><span class="app-tag">Ταμεία</span></div>
       <button class="icon-btn only-mobile" id="close-menu" aria-label="Κλείσιμο μενού">✕</button>
     </div>
     <nav id="nav" class="nav"></nav>
@@ -48,6 +49,7 @@
     <header class="topbar">
       <button class="icon-btn only-mobile" id="open-menu" aria-label="Μενού">☰</button>
       <div class="top-title"><strong id="page-title">Ταμεία</strong><span id="page-sub" class="muted"></span></div>
+      <div class="top-actions"><button class="btn sm theme-btn" id="theme-btn" type="button" aria-pressed="false"></button></div>
     </header>
     <main id="view" class="view" tabindex="-1"></main>
   </div>
