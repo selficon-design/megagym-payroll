@@ -70,6 +70,8 @@ function drawNav(openCount) {
     const hot = r.badge || r.alerts || r.notices;
     html += `<a href="#/${r.id}" data-id="${r.id}"><span class="ico">${r.ico}</span>${r.title}${n ? `<span class="count ${hot ? "hot" : ""}" title="${hot ? "Αδιάβαστες ενημερώσεις" : ""}">${n}</span>` : ""}</a>`;
   }
+  // Άλλες εφαρμογές στην ίδια βάση: Ταμεία (μόνο σε όσους έχουν δικαίωμα σε αυτά)
+  if ((S.me?.perms || []).some((p) => p.startsWith("cash."))) html += `<div class="nav-group">Άλλες εφαρμογές</div><a href="tameia/" data-ext><span class="ico">↗</span>Ταμεία</a>`;
   $("#nav").innerHTML = html;
   markActive();
 }
