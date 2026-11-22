@@ -66,7 +66,9 @@ jobs:
       - name: Εξαγωγή βάσης
         run: |
           mkdir -p dump
-          if supabase db dump --help 2>&1 | grep -q -- '--linked'; then T=--linked; else T=; fi
+          # Νέες εκδόσεις CLI: --remote · παλιότερες: --linked (όπως στο deploy)
+          if supabase db dump --help 2>&1 | grep -q -- '--remote'; then T=--remote; else T=--linked; fi
+          echo "Στόχος: $T"
           ./scripts/ci-run.sh supabase db dump $T --password "$SUPABASE_DB_PASSWORD" -f dump/1_schema.sql
           ./scripts/ci-run.sh supabase db dump $T --password "$SUPABASE_DB_PASSWORD" --data-only --use-copy -f dump/2_data.sql
           # Έλεγχος: το αρχείο δεδομένων πρέπει να έχει τους βασικούς πίνακες
