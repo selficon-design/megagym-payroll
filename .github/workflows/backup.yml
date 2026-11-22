@@ -1,0 +1,112 @@
+# Ημερήσιο backup ΟΛΗΣ της βάσης (Μισθοδοσία/HR + Ταμεία — ίδια βάση)
+#  • Κάθε νύχτα ~03:15 ώρα Ελλάδας (και χειροκίνητα από Actions → Backup βάσης → Run workflow).
+#  • Δομή + δεδομένα (με τα συνημμένα/παραστατικά, που είναι μέσα στη βάση) σε αρχείο 7z με κρυπτογράφηση AES-256
+#    και κρυπτογραφημένα ονόματα αρχείων. Ανοίγει με 7-Zip και τον κωδικό backup.
+#  • Χωρίς τον κωδικό (Secret BACKUP_PASSWORD) ΔΕΝ ανεβαίνει τίποτα: το repo είναι δημόσιο.
+#  • Κρατιέται 90 ημέρες στο GitHub (Actions → εκτέλεση → Artifacts). Επιπλέον το Supabase Pro κρατά δικά του 7 ημερών.
+name: Backup βάσης
+
+on:
+  schedule:
+    - cron: "17 1 * * *"   # 01:17 UTC = 03:17 χειμώνα / 04:17 καλοκαίρι
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Ημερήσιο backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Έλεγχος ρυθμίσεων
+        run: |
+          missing=""
+          [ -z "$SUPABASE_ACCESS_TOKEN" ] && missing="$missing SUPABASE_ACCESS_TOKEN"
+          [ -z "$SUPABASE_DB_PASSWORD" ] && missing="$missing SUPABASE_DB_PASSWORD"
+          [ -z "$REF" ] && missing="$missing SUPABASE_PROJECT_REF"
+          [ -z "$BACKUP_PASSWORD" ] && missing="$missing BACKUP_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Λείπουν τα Secrets:$missing (Settings → Secrets and variables → Actions). Χωρίς κωδικό backup δεν δημιουργείται αρχείο."; exit 1
+          fi
+          if [ ${#BACKUP_PASSWORD} -lt 12 ]; then echo "::error::Ο κωδικός backup πρέπει να έχει τουλάχιστον 12 χαρακτήρες."; exit 1; fi
+          TOK=$(printf '%s' "$SUPABASE_ACCESS_TOKEN" | tr -d '[:space:]')
+          PW=$(printf '%s' "$SUPABASE_DB_PASSWORD" | tr -d '\r\n')
+          REF=$(printf '%s' "$REF" | tr -d '[:space:]')
+          echo "::add-mask::$TOK"; echo "::add-mask::$PW"; echo "::add-mask::$BACKUP_PASSWORD"
+          { echo "SUPABASE_ACCESS_TOKEN=$TOK"; echo "SUPABASE_DB_PASSWORD=$PW"; echo "REF=$REF"; } >> "$GITHUB_ENV"
+          echo "DAY=$(TZ=Europe/Athens date +%F)" >> "$GITHUB_ENV"
+
+      - uses: supabase/setup-cli@v1
+        id: cli
+        continue-on-error: true
+        with:
+          version: latest
+
+      # Αν το GitHub περιορίσει προσωρινά τα αιτήματα (rate limit), το CLI εγκαθίσταται από το npm
+      - name: Εγκατάσταση CLI (εναλλακτικά)
+        if: steps.cli.outcome != 'success'
+        run: npm install -g supabase@latest && supabase --version
+
+      - name: Σύνδεση με το project
+        run: ./scripts/ci-run.sh supabase link --project-ref "$REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Εξαγωγή βάσης
+        run: |
+          mkdir -p dump
+          if supabase db dump --help 2>&1 | grep -q -- '--linked'; then T=--linked; else T=; fi
+          ./scripts/ci-run.sh supabase db dump $T --password "$SUPABASE_DB_PASSWORD" -f dump/1_schema.sql
+          ./scripts/ci-run.sh supabase db dump $T --password "$SUPABASE_DB_PASSWORD" --data-only --use-copy -f dump/2_data.sql
+          # Έλεγχος: το αρχείο δεδομένων πρέπει να έχει τους βασικούς πίνακες
+          for t in employees app_users declarations; do
+            grep -Eq "\"?public\"?\.\"?$t\"?[ (]" dump/2_data.sql || { echo "::error::Το backup δεν περιέχει τον πίνακα $t — ακυρώθηκε."; exit 1; }
+          done
+          {
+            echo "MEGA GYM — backup βάσης ($DAY)"
+            echo "Project: Μισθοδοσία / HR + Ταμεία (ίδια βάση)"
+            echo "Commit εφαρμογής: $GITHUB_SHA"
+            echo ""
+            echo "1_schema.sql : δομή (πίνακες, συναρτήσεις, δικαιώματα)"
+            echo "2_data.sql   : όλα τα δεδομένα, μαζί με συνημμένα και παραστατικά"
+            echo ""
+            echo "Επαναφορά: δείτε docs/BACKUP.md στο repo."
+          } > dump/README.txt
+          ls -la dump
+          echo "SIZE=$(du -sh dump | cut -f1)" >> "$GITHUB_ENV"
+
+      - name: Κρυπτογράφηση (7z AES-256)
+        run: |
+          cd dump
+          7z a -t7z -mx=7 -mhe=on -p"$BACKUP_PASSWORD" "../MEGA_GYM_backup_$DAY.7z" README.txt 1_schema.sql 2_data.sql > /dev/null
+          cd ..
+          7z t -p"$BACKUP_PASSWORD" "MEGA_GYM_backup_$DAY.7z" > /dev/null && echo "Έλεγχος αρχείου: OK"
+          # Χωρίς κωδικό το αρχείο ΔΕΝ πρέπει να ανοίγει (ούτε η λίστα αρχείων)
+          if 7z l -p"wrong-password-check" "MEGA_GYM_backup_$DAY.7z" > /dev/null 2>&1; then echo "::error::Το αρχείο δεν είναι κρυπτογραφημένο."; exit 1; fi
+          shred -u dump/*.sql
+          ls -la MEGA_GYM_backup_*.7z
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MEGA_GYM_backup_${{ env.DAY }}
+          path: MEGA_GYM_backup_*.7z
+          retention-days: 90
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Σύνοψη
+        run: |
+          echo "### ✓ Backup $DAY" >> "$GITHUB_STEP_SUMMARY"
+          echo "Μέγεθος δεδομένων: $SIZE · κρυπτογραφημένο 7z (AES-256) · κρατιέται 90 ημέρες." >> "$GITHUB_STEP_SUMMARY"
+          echo "Λήψη: αυτή η σελίδα → Artifacts. Άνοιγμα με 7-Zip και τον κωδικό backup." >> "$GITHUB_STEP_SUMMARY"
